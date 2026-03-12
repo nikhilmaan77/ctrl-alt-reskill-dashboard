@@ -1,6 +1,6 @@
 """
-Global Workforce Reskilling Gap — Consulting Intelligence Dashboard
-===================================================================
+Ctrl+Alt+Reskill — Global Workforce Reskilling Gap Intelligence Dashboard
+==========================================================================
 WEF/ILO-grade analytical dashboard: 8 tabs, 4 ML methods, policy-first design.
 Single-file Streamlit application.
 """
@@ -34,69 +34,96 @@ warnings.filterwarnings("ignore")
 # ════════════════════════════════════════════════════════════════
 
 st.set_page_config(
-    page_title="Global Reskilling Gap Intelligence",
+    page_title="Ctrl+Alt+Reskill",
     page_icon="🌍",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Color palette
-C_PRIMARY = "#00D4AA"
-C_RISK = "#FF6B6B"
-C_WARN = "#FFD93D"
-C_INFO = "#6C9BD2"
-C_PURPLE = "#B07CFF"
-C_ORANGE = "#FF9F43"
-C_BG_CARD = "#1A1A2E"
-C_BG_DARK = "#0F0F1A"
-C_TEXT = "#E8E8E8"
+# Color palette — mode-aware
+if "dark_mode" not in st.session_state:
+    st.session_state.dark_mode = True
+
+dark = st.session_state.dark_mode
+
+C_PRIMARY = "#00D4AA" if dark else "#00997A"
+C_RISK = "#FF6B6B" if dark else "#D94444"
+C_WARN = "#FFD93D" if dark else "#CC9E00"
+C_INFO = "#6C9BD2" if dark else "#3A6FA8"
+C_PURPLE = "#B07CFF" if dark else "#7E4FCC"
+C_ORANGE = "#FF9F43" if dark else "#CC7A22"
+C_BG_CARD = "#1A1A2E" if dark else "#F4F6FA"
+C_BG_DARK = "#0F0F1A" if dark else "#FFFFFF"
+C_TEXT = "#E8E8E8" if dark else "#1A1A2E"
+C_TEXT_MUTED = "#999" if dark else "#666"
+C_TEXT_BODY = "#CCC" if dark else "#444"
+C_TEXT_SUB = "#777" if dark else "#888"
+C_TEXT_DESC = "#AAA" if dark else "#555"
+C_TEXT_POLICY = "#BBB" if dark else "#444"
+C_BORDER = "rgba(255,255,255,0.08)" if dark else "rgba(0,0,0,0.10)"
+C_CARD_SHADOW = "rgba(0,0,0,0.3)" if dark else "rgba(0,0,0,0.08)"
+C_CARD_BG1 = "#1A1A2E" if dark else "#F4F6FA"
+C_CARD_BG2 = "#16213E" if dark else "#EDF0F7"
+C_POLICY_BG1 = "#0D2137" if dark else "#EFF8F5"
+C_POLICY_BG2 = "#132743" if dark else "#E5F2EE"
+C_CALLOUT_BG = "rgba(255,255,255,0.04)" if dark else "rgba(0,0,0,0.03)"
+C_PERSONA_BG1 = "#1A1A2E" if dark else "#F4F6FA"
+C_PERSONA_BG2 = "#1E2A3A" if dark else "#EDF0F7"
+C_HEADLINE_BG1 = "#0A2E1F" if dark else "#E8F5EF"
+C_HEADLINE_BG2 = "#0D3B2A" if dark else "#D5EDE2"
+C_DIVIDER = "rgba(255,255,255,0.08)" if dark else "rgba(0,0,0,0.10)"
+C_GEO_LAND = "#1A1A2E" if dark else "#E8E8E8"
+C_GEO_OCEAN = "#0F0F1A" if dark else "#F5F5F5"
+C_SIM_BG1 = "#0D2137" if dark else "#EFF8F5"
+C_SIM_BG2 = "#132743" if dark else "#E5F2EE"
+
 PERSONA_COLORS = [C_PRIMARY, C_RISK, C_WARN, C_INFO, C_PURPLE]
 
-st.markdown("""
+st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap');
-.main .block-container { padding: 1rem 2rem; max-width: 1400px; }
-h1, h2, h3, h4 { font-family: 'DM Sans', sans-serif !important; }
-.kpi-card {
-    background: linear-gradient(135deg, #1A1A2E 0%, #16213E 100%);
+.main .block-container {{ padding: 1rem 2rem; max-width: 1400px; }}
+h1, h2, h3, h4 {{ font-family: 'DM Sans', sans-serif !important; }}
+.kpi-card {{
+    background: linear-gradient(135deg, {C_CARD_BG1} 0%, {C_CARD_BG2} 100%);
     border-radius: 12px; padding: 1.2rem; text-align: center;
-    border: 1px solid rgba(255,255,255,0.08);
-    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-}
-.kpi-value { font-size: 2rem; font-weight: 700; font-family: 'Space Mono', monospace; margin: 0.3rem 0; }
-.kpi-label { font-size: 0.8rem; color: #999; text-transform: uppercase; letter-spacing: 1px; }
-.kpi-sub { font-size: 0.75rem; color: #777; margin-top: 0.2rem; }
-.policy-panel {
-    background: linear-gradient(135deg, #0D2137 0%, #132743 100%);
-    border-left: 4px solid #00D4AA; border-radius: 8px;
+    border: 1px solid {C_BORDER};
+    box-shadow: 0 4px 20px {C_CARD_SHADOW};
+}}
+.kpi-value {{ font-size: 2rem; font-weight: 700; font-family: 'Space Mono', monospace; margin: 0.3rem 0; }}
+.kpi-label {{ font-size: 0.8rem; color: {C_TEXT_MUTED}; text-transform: uppercase; letter-spacing: 1px; }}
+.kpi-sub {{ font-size: 0.75rem; color: {C_TEXT_SUB}; margin-top: 0.2rem; }}
+.policy-panel {{
+    background: linear-gradient(135deg, {C_POLICY_BG1} 0%, {C_POLICY_BG2} 100%);
+    border-left: 4px solid {C_PRIMARY}; border-radius: 8px;
     padding: 1.5rem; margin: 1rem 0;
-}
-.policy-panel h4 { color: #00D4AA; margin-top: 0; font-size: 1.1rem; }
-.policy-panel li { margin-bottom: 0.6rem; color: #CCC; line-height: 1.5; }
-.callout-box {
-    background: rgba(255,255,255,0.04); border-radius: 8px;
+}}
+.policy-panel h4 {{ color: {C_PRIMARY}; margin-top: 0; font-size: 1.1rem; }}
+.policy-panel li {{ margin-bottom: 0.6rem; color: {C_TEXT_POLICY}; line-height: 1.5; }}
+.callout-box {{
+    background: {C_CALLOUT_BG}; border-radius: 8px;
     padding: 1rem 1.2rem; margin: 0.5rem 0;
-    border: 1px solid rgba(255,255,255,0.08);
-}
-.callout-box .callout-title { font-weight: 700; font-size: 0.95rem; margin-bottom: 0.3rem; }
-.callout-box .callout-body { font-size: 0.85rem; color: #BBB; line-height: 1.5; }
-.persona-card {
-    background: linear-gradient(135deg, #1A1A2E 0%, #1E2A3A 100%);
+    border: 1px solid {C_BORDER};
+}}
+.callout-box .callout-title {{ font-weight: 700; font-size: 0.95rem; margin-bottom: 0.3rem; }}
+.callout-box .callout-body {{ font-size: 0.85rem; color: {C_TEXT_POLICY}; line-height: 1.5; }}
+.persona-card {{
+    background: linear-gradient(135deg, {C_PERSONA_BG1} 0%, {C_PERSONA_BG2} 100%);
     border-radius: 12px; padding: 1.2rem; margin: 0.5rem 0;
     border-left: 4px solid; min-height: 160px;
-}
-.persona-card h4 { margin: 0 0 0.5rem 0; font-size: 1rem; }
-.persona-card .pct { font-family: 'Space Mono', monospace; font-size: 1.5rem; font-weight: 700; }
-.persona-card .desc { font-size: 0.82rem; color: #AAA; margin-top: 0.4rem; line-height: 1.4; }
-.persona-card .policy { font-size: 0.8rem; color: #00D4AA; margin-top: 0.5rem; font-style: italic; }
-.headline-stat {
-    background: linear-gradient(135deg, #0A2E1F 0%, #0D3B2A 100%);
-    border: 2px solid #00D4AA; border-radius: 14px;
+}}
+.persona-card h4 {{ margin: 0 0 0.5rem 0; font-size: 1rem; }}
+.persona-card .pct {{ font-family: 'Space Mono', monospace; font-size: 1.5rem; font-weight: 700; }}
+.persona-card .desc {{ font-size: 0.82rem; color: {C_TEXT_DESC}; margin-top: 0.4rem; line-height: 1.4; }}
+.persona-card .policy {{ font-size: 0.8rem; color: {C_PRIMARY}; margin-top: 0.5rem; font-style: italic; }}
+.headline-stat {{
+    background: linear-gradient(135deg, {C_HEADLINE_BG1} 0%, {C_HEADLINE_BG2} 100%);
+    border: 2px solid {C_PRIMARY}; border-radius: 14px;
     padding: 1.5rem; text-align: center; margin-bottom: 1rem;
-}
-.headline-stat .big { font-size: 2.5rem; font-weight: 700; color: #00D4AA; font-family: 'Space Mono', monospace; }
-.headline-stat .sub { font-size: 0.9rem; color: #AAA; margin-top: 0.3rem; }
-.section-divider { border: 0; border-top: 1px solid rgba(255,255,255,0.08); margin: 2rem 0; }
+}}
+.headline-stat .big {{ font-size: 2.5rem; font-weight: 700; color: {C_PRIMARY}; font-family: 'Space Mono', monospace; }}
+.headline-stat .sub {{ font-size: 0.9rem; color: {C_TEXT_DESC}; margin-top: 0.3rem; }}
+.section-divider {{ border: 0; border-top: 1px solid {C_DIVIDER}; margin: 2rem 0; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -120,9 +147,11 @@ EDU_ORDER = ["Below High School", "High School/Diploma", "Bachelor's", "Master's
 ROLE_ORDER = ["Entry-level", "Mid-level", "Senior", "Manager/Director", "Executive/C-suite"]
 AUTO_BUCKET_ORDER = ["0-20%", "21-40%", "41-60%", "61-80%", "81-100%"]
 
-PLOTLY_TEMPLATE = "plotly_dark"
+PLOTLY_TEMPLATE = "plotly_dark" if dark else "plotly_white"
 CHART_BG = "rgba(0,0,0,0)"
 CHART_MARGINS = dict(l=60, r=30, t=50, b=50)
+CHART_FONT_COLOR = C_TEXT
+CHART_GRID_COLOR = "#333" if dark else "#DDD"
 
 DERIVED_VARS = [
     "automation_vulnerability_idx", "reskilling_engagement_score",
@@ -524,6 +553,11 @@ df = load_data()
 # ── Sidebar ──
 with st.sidebar:
     st.markdown("### 🌍 Global Filters")
+    mode_toggle = st.toggle("🌙 Dark Mode", value=st.session_state.dark_mode, key="mode_toggle")
+    if mode_toggle != st.session_state.dark_mode:
+        st.session_state.dark_mode = mode_toggle
+        st.rerun()
+    st.markdown("---")
     sel_countries = st.multiselect("Countries", df["country"].unique().tolist(),
                                     default=df["country"].unique().tolist())
     sel_industries = st.multiselect("Industries", df["industry"].unique().tolist(),
@@ -544,8 +578,8 @@ fdf = df[
 ]
 
 # ── Title ──
-st.markdown("# 🌍 Global Workforce Reskilling Gap")
-st.markdown("##### Intelligence Dashboard for Policy & Industry Leaders")
+st.markdown("# 🌍 Ctrl+Alt+Reskill")
+st.markdown("##### Global Workforce Reskilling Gap — Intelligence Dashboard for Policy & Industry Leaders")
 
 # ── Tabs ──
 tab_names = [
@@ -630,7 +664,7 @@ with tabs[0]:
         )
         fig_map.update_layout(
             geo=dict(bgcolor=CHART_BG, showframe=False, projection_type="natural earth",
-                     landcolor="#1A1A2E", oceancolor="#0F0F1A", lakecolor="#0F0F1A"),
+                     landcolor=C_GEO_LAND, oceancolor=C_GEO_OCEAN, lakecolor=C_GEO_OCEAN),
             paper_bgcolor=CHART_BG, plot_bgcolor=CHART_BG,
             margin=dict(l=0, r=0, t=10, b=0), height=380,
             coloraxis_colorbar=dict(title="Index", thickness=15, len=0.6)
@@ -747,7 +781,7 @@ with tabs[1]:
 
     with col_cm:
         cm = confusion_matrix(clf_res["y_test"], clf_res["y_pred"])
-        fig_cm = px.imshow(cm, text_auto=True, color_continuous_scale=[[0, "#0F0F1A"], [1, C_PRIMARY]],
+        fig_cm = px.imshow(cm, text_auto=True, color_continuous_scale=[[0, C_BG_DARK], [1, C_PRIMARY]],
                            x=["No", "Yes"], y=["No", "Yes"],
                            labels={"x": "Predicted", "y": "Actual"}, template=PLOTLY_TEMPLATE)
         fig_cm.update_layout(title="Confusion Matrix", paper_bgcolor=CHART_BG, height=320,
@@ -806,11 +840,11 @@ with tabs[1]:
     sim_prob = clf_res["model"].predict_proba(sim_features)[0, 1]
 
     st.markdown(f"""
-    <div style="text-align:center; padding:1.5rem; background:linear-gradient(135deg,#0D2137,#132743);
-                border-radius:12px; border:2px solid {'#00D4AA' if sim_prob > 0.5 else '#FF6B6B'};">
+    <div style="text-align:center; padding:1.5rem; background:linear-gradient(135deg,{C_SIM_BG1},{C_SIM_BG2});
+                border-radius:12px; border:2px solid {C_PRIMARY if sim_prob > 0.5 else C_RISK};">
         <div style="font-size:3rem; font-weight:700; font-family:'Space Mono',monospace;
-                    color:{'#00D4AA' if sim_prob > 0.5 else '#FF6B6B'}">{sim_prob:.0%}</div>
-        <div style="color:#999; font-size:0.9rem;">Predicted Probability of Successful Reskilling Transition</div>
+                    color:{C_PRIMARY if sim_prob > 0.5 else C_RISK}">{sim_prob:.0%}</div>
+        <div style="color:{C_TEXT_MUTED}; font-size:0.9rem;">Predicted Probability of Successful Reskilling Transition</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -872,7 +906,7 @@ with tabs[2]:
             line=dict(color=PERSONA_COLORS[i % len(PERSONA_COLORS)])
         ))
     fig_radar.update_layout(
-        polar=dict(bgcolor=CHART_BG, radialaxis=dict(visible=True, range=[0, 1], gridcolor="#333")),
+        polar=dict(bgcolor=CHART_BG, radialaxis=dict(visible=True, range=[0, 1], gridcolor=CHART_GRID_COLOR)),
         template=PLOTLY_TEMPLATE, paper_bgcolor=CHART_BG, height=450,
         legend=dict(orientation="h", y=-0.15), margin=dict(l=60, r=60, t=40, b=80)
     )
@@ -918,7 +952,7 @@ with tabs[2]:
     country_persona = country_persona[available_cols]
 
     fig_hm = px.imshow(country_persona.round(1), text_auto=".1f",
-                        color_continuous_scale=[[0, "#0F0F1A"], [0.5, C_INFO], [1, C_PRIMARY]],
+                        color_continuous_scale=[[0, C_BG_DARK], [0.5, C_INFO], [1, C_PRIMARY]],
                         labels={"color": "% of Country"}, template=PLOTLY_TEMPLATE,
                         aspect="auto")
     fig_hm.update_layout(paper_bgcolor=CHART_BG, margin=dict(l=120, r=30, t=30, b=80), height=420)
@@ -997,7 +1031,7 @@ with tabs[3]:
         fig_net = go.Figure(data=edge_traces + [go.Scatter(
             x=node_x, y=node_y, mode="markers+text", text=node_text,
             textposition="top center", textfont=dict(size=9, color=C_TEXT),
-            marker=dict(size=node_size, color=C_PRIMARY, line=dict(width=1, color="#333")),
+            marker=dict(size=node_size, color=C_PRIMARY, line=dict(width=1, color=CHART_GRID_COLOR)),
             hoverinfo="text", showlegend=False
         )])
         fig_net.update_layout(template=PLOTLY_TEMPLATE, paper_bgcolor=CHART_BG,
@@ -1006,34 +1040,71 @@ with tabs[3]:
                                height=450, margin=dict(l=20, r=20, t=20, b=20))
         st.plotly_chart(fig_net, use_container_width=True)
 
-    # Highlighted callout boxes for expected bias-driven rules
+    # Highlighted callout boxes for key pattern findings
     st.markdown("#### Key Pattern Findings")
     cb1, cb2, cb3 = st.columns(3)
 
-    # Find specific rules matching our biases
-    def find_rule(rules_df, ant_contains, con_contains):
+    # Robust rule finder — tries multiple matching strategies
+    def find_rule_flexible(rules_df, ant_keywords, con_keywords):
+        """Find best matching rule with flexible keyword matching."""
+        best_rule = None
+        best_lift = 0
         for _, r in rules_df.iterrows():
-            ant_str = r["antecedents_str"]
-            con_str = r["consequents_str"]
-            if any(a in ant_str for a in ant_contains) and any(c in con_str for c in con_contains):
-                return r
-        return None
+            ant_str = r["antecedents_str"].lower()
+            con_str = r["consequents_str"].lower()
+            ant_match = sum(1 for a in ant_keywords if a.lower() in ant_str)
+            con_match = sum(1 for c in con_keywords if c.lower() in con_str)
+            if ant_match > 0 and con_match > 0 and r["lift"] > best_lift:
+                best_rule = r
+                best_lift = r["lift"]
+        return best_rule
 
-    r1 = find_rule(rules, ["Developing", "Low_Income"], ["Barrier_Cost"])
-    r2 = find_rule(rules, ["Ind_Technology", "Employer_Support_Yes"], ["High_LD"])
-    r3 = find_rule(rules, ["Female", "Barrier_Family"], ["High_Willingness"])
-    if r3 is None:
-        r3 = find_rule(rules, ["Female"], ["High_Willingness"])
+    r1 = find_rule_flexible(rules, ["developing", "low_income"], ["barrier_cost", "cost"])
+    r2 = find_rule_flexible(rules, ["ind_technology", "employer_support_yes"], ["high_ld", "satisfaction"])
+    r3 = find_rule_flexible(rules, ["female"], ["high_willingness", "willingness"])
+
+    # Compute empirical stats as fallback context
+    dev_cost_pct = (df[(df["dev_tier"] == "Developing") & (df["biggest_barrier"] == "Cost")].shape[0] /
+                    max(df[df["dev_tier"] == "Developing"].shape[0], 1)) * 100
+    tech_emp_sat = df[(df["industry"] == "Technology/IT") & (df["employer_provides_reskilling"] == "Yes")]["satisfaction_employer_ld"].mean()
+    f_willingness = df[df["gender"] == "Female"]["willingness_to_reskill"].mean()
+    m_willingness = df[df["gender"] == "Male"]["willingness_to_reskill"].mean()
 
     with cb1:
-        lift_val = f"{r1['lift']:.2f}" if r1 is not None else "N/A"
-        st.markdown(callout_box("Bias 4 Confirmed", f"<b>Developing Country + Low Income → Cost Barrier</b><br>Lift: {lift_val}. Cost is the primary structural barrier in emerging economies.", C_RISK), unsafe_allow_html=True)
+        if r1 is not None:
+            lift_val = f"{r1['lift']:.2f}"
+            conf_val = f"{r1['confidence']:.0%}"
+            body = (f"<b>Developing Country + Low Income → Cost Barrier</b><br>"
+                    f"Lift: {lift_val} · Confidence: {conf_val}<br>"
+                    f"Cost is cited by {dev_cost_pct:.0f}% of developing-country respondents — the dominant structural barrier.")
+        else:
+            body = (f"<b>Developing Country + Low Income → Cost Barrier</b><br>"
+                    f"Cost is cited by {dev_cost_pct:.0f}% of developing-country respondents — the dominant structural barrier in emerging economies.")
+        st.markdown(callout_box("📌 Cost as Structural Barrier", body, C_RISK), unsafe_allow_html=True)
+
     with cb2:
-        lift_val = f"{r2['lift']:.2f}" if r2 is not None else "N/A"
-        st.markdown(callout_box("Bias 3 Confirmed", f"<b>Tech Industry + Employer Support → High L&D Satisfaction</b><br>Lift: {lift_val}. Tech employers set the standard for reskilling investment.", C_PRIMARY), unsafe_allow_html=True)
+        if r2 is not None:
+            lift_val = f"{r2['lift']:.2f}"
+            conf_val = f"{r2['confidence']:.0%}"
+            body = (f"<b>Tech Industry + Employer Support → High L&D Satisfaction</b><br>"
+                    f"Lift: {lift_val} · Confidence: {conf_val}<br>"
+                    f"Tech employers with reskilling programs achieve avg {tech_emp_sat:.1f}/5 satisfaction — setting the standard.")
+        else:
+            body = (f"<b>Tech Industry + Employer Support → High L&D Satisfaction</b><br>"
+                    f"Tech employers with reskilling programs achieve avg {tech_emp_sat:.1f}/5 satisfaction — a model for other sectors.")
+        st.markdown(callout_box("📌 Tech Employer Best Practice", body, C_PRIMARY), unsafe_allow_html=True)
+
     with cb3:
-        lift_val = f"{r3['lift']:.2f}" if r3 is not None else "N/A"
-        st.markdown(callout_box("Bias 7 Confirmed", f"<b>Female Workers → Equal/High Willingness to Reskill</b><br>Lift: {lift_val}. Women want to reskill but face structural access barriers.", C_PURPLE), unsafe_allow_html=True)
+        if r3 is not None:
+            lift_val = f"{r3['lift']:.2f}"
+            conf_val = f"{r3['confidence']:.0%}"
+            body = (f"<b>Female Workers → Equal/High Willingness to Reskill</b><br>"
+                    f"Lift: {lift_val} · Confidence: {conf_val}<br>"
+                    f"Women report {f_willingness:.2f}/5 willingness vs {m_willingness:.2f}/5 for men — the gap is access, not motivation.")
+        else:
+            body = (f"<b>Female Workers → Equal/High Willingness to Reskill</b><br>"
+                    f"Women report {f_willingness:.2f}/5 willingness vs {m_willingness:.2f}/5 for men — the gap is access, not motivation.")
+        st.markdown(callout_box("📌 Gender Willingness Parity", body, C_PURPLE), unsafe_allow_html=True)
 
     st.markdown(section_divider(), unsafe_allow_html=True)
 
@@ -1164,8 +1235,8 @@ with tabs[4]:
 
     st.markdown(section_divider(), unsafe_allow_html=True)
 
-    # SHAP dependence: Age × Career Confidence (Bias 5)
-    st.markdown("#### Age × Career Confidence Interaction (Bias 5: Youth Overconfidence)")
+    # SHAP dependence: Age × Career Confidence (Youth Overconfidence)
+    st.markdown("#### Age × Career Confidence Interaction (Youth Overconfidence Paradox)")
     age_conf_df = df[["age", "career_confidence_5yr", "reskilling_engagement_score"]].dropna()
     fig_age_conf = px.scatter(
         age_conf_df, x="age", y="career_confidence_5yr",
@@ -1186,7 +1257,7 @@ with tabs[4]:
                                 coloraxis_colorbar=dict(title="Engagement", thickness=12))
     st.plotly_chart(fig_age_conf, use_container_width=True)
 
-    # Compute bias 5 stat
+    # Compute youth overconfidence stats
     young_conf = df[df["age"] < 30]["career_confidence_5yr"].mean()
     young_engage = df[df["age"] < 30]["reskilling_engagement_score"].mean()
     old_conf = df[df["age"] >= 35]["career_confidence_5yr"].mean()
@@ -1260,7 +1331,7 @@ with tabs[4]:
     # Find the anxiety level with highest willingness
     anx_will = df.groupby("career_anxiety")["willingness_to_reskill"].mean()
     peak_anxiety = anx_will.idxmax()
-    age_threshold = 30  # from Bias 5 design
+    age_threshold = 30
 
     st.markdown(policy_panel("Policy Implications — Regression Findings", [
         f"<b>Moderate urgency messaging drives reskilling action; catastrophist framing causes paralysis.</b> "
@@ -1312,7 +1383,7 @@ with tabs[5]:
     )
     fig_geo.update_layout(
         geo=dict(bgcolor=CHART_BG, showframe=False, projection_type="natural earth",
-                 landcolor="#1A1A2E", oceancolor="#0F0F1A"),
+                 landcolor=C_GEO_LAND, oceancolor=C_GEO_OCEAN),
         paper_bgcolor=CHART_BG, margin=dict(l=0, r=0, t=10, b=0), height=420,
         coloraxis_colorbar=dict(title=metric_choice[:15], thickness=15, len=0.6)
     )
@@ -1509,7 +1580,7 @@ with tabs[6]:
     st.markdown("#### Employer Support Rate — Gender × Industry")
     gi_support = gdf.groupby(["industry", "gender"])["employer_provides_reskilling_bin"].mean().unstack(fill_value=0) * 100
     fig_gi = px.imshow(gi_support.round(1), text_auto=".1f",
-                        color_continuous_scale=[[0, "#0F0F1A"], [0.5, C_INFO], [1, C_PRIMARY]],
+                        color_continuous_scale=[[0, C_BG_DARK], [0.5, C_INFO], [1, C_PRIMARY]],
                         labels={"color": "Support Rate %"}, template=PLOTLY_TEMPLATE, aspect="auto")
     fig_gi.update_layout(paper_bgcolor=CHART_BG, margin=dict(l=160, r=30, t=30, b=50), height=400)
     st.plotly_chart(fig_gi, use_container_width=True)
@@ -1575,7 +1646,7 @@ with tabs[7]:
     for label, x, y in [("AT-RISK\nLOW EARNER", 0.0, 1.0), ("STRIVING\nUPSKILLER", 0.0, 15.0),
                          ("COMPLACENT\nHIGH EARNER", 1.0, 1.0), ("INVESTED\nHIGH EARNER", 1.0, 15.0)]:
         fig_matrix.add_annotation(x=x, y=y, text=label, showarrow=False,
-                                   font=dict(size=11, color="#666"), opacity=0.6)
+                                   font=dict(size=11, color=C_TEXT_MUTED), opacity=0.6)
     fig_matrix.update_layout(paper_bgcolor=CHART_BG, height=500, margin=CHART_MARGINS,
                               xaxis=dict(showticklabels=False), legend=dict(orientation="h", y=-0.12))
     st.plotly_chart(fig_matrix, use_container_width=True)
@@ -1651,9 +1722,6 @@ with tabs[7]:
 st.markdown("---")
 st.markdown("""
 <div style="text-align:center; padding:1rem; color:#666; font-size:0.8rem;">
-    <b>Global Workforce Reskilling Gap Intelligence Dashboard</b><br>
-    Synthetic dataset: 10,000 respondents · 12 countries · 38 variables · Seed: 42<br>
-    Built for WEF/ILO policy presentation · SP Jain School of Global Management<br>
-    Classification · Clustering · Association Rules · Regression
+    <b>Global Workforce Reskilling Gap Intelligence Dashboard</b>
 </div>
 """, unsafe_allow_html=True)

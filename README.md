@@ -1,6 +1,6 @@
-# Global Workforce Reskilling Gap — Consulting Intelligence Dashboard
+# Ctrl+Alt+Reskill — Global Workforce Reskilling Gap Intelligence Dashboard
 
-A WEF/ILO-grade analytical dashboard built on 10,000 synthetic survey responses, designed to present actionable reskilling policy insights to government ministers, industry leaders, and international policymakers.
+A WEF/ILO-grade analytical dashboard built on 10,000 synthetic survey responses, designed to present actionable reskilling policy insights to government ministers, industry leaders, and international policymakers. Features dark/light mode toggle.
 
 ## Dashboard Structure (8 Tabs)
 
@@ -36,7 +36,7 @@ Ensure `global_reskilling_gap_survey_10k.csv` is in the same directory as `app.p
 | `requirements.txt` | Python dependencies |
 | `README.md` | This file |
 
-## Embedded Biases (What Models Should Discover)
+## Embedded Data Patterns (What Models Should Discover)
 
 1. Mid-level roles face highest automation exposure (non-linear)
 2. Inverted-U between career anxiety and reskilling action
