@@ -82,8 +82,58 @@ PERSONA_COLORS = [C_PRIMARY, C_RISK, C_WARN, C_INFO, C_PURPLE]
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap');
-.main .block-container {{ padding: 1rem 2rem; max-width: 1400px; }}
-h1, h2, h3, h4 {{ font-family: 'DM Sans', sans-serif !important; }}
+
+/* Streamlit page-level overrides for light/dark mode */
+.stApp, .stApp > header {{
+    background-color: {"#0E1117" if dark else "#FFFFFF"} !important;
+}}
+.stApp [data-testid="stSidebar"] {{
+    background-color: {"#161B22" if dark else "#F0F2F6"} !important;
+}}
+.stApp [data-testid="stSidebar"] * {{
+    color: {"#E8E8E8" if dark else "#1A1A2E"} !important;
+}}
+.stApp .main .block-container {{
+    padding: 1rem 2rem; max-width: 1400px;
+}}
+.stApp, .stApp .main, .stApp .main .block-container {{
+    color: {C_TEXT} !important;
+}}
+.stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5 {{
+    color: {C_TEXT} !important;
+    font-family: 'DM Sans', sans-serif !important;
+}}
+.stApp p, .stApp span, .stApp label, .stApp li {{
+    color: {C_TEXT} !important;
+}}
+.stApp .stTabs [data-baseweb="tab-list"] {{
+    background-color: {"#161B22" if dark else "#F5F5F5"} !important;
+    border-radius: 8px;
+}}
+.stApp .stTabs [data-baseweb="tab"] {{
+    color: {C_TEXT_MUTED} !important;
+}}
+.stApp .stTabs [aria-selected="true"] {{
+    color: {C_PRIMARY} !important;
+}}
+.stApp .stMarkdown, .stApp .stCaption {{
+    color: {C_TEXT} !important;
+}}
+.stApp .stCaption p {{
+    color: {C_TEXT_MUTED} !important;
+}}
+.stApp [data-testid="stExpander"] {{
+    background-color: {"#161B22" if dark else "#F5F5F5"} !important;
+    border-color: {C_BORDER} !important;
+}}
+.stApp .stSelectbox label, .stApp .stMultiSelect label, .stApp .stSlider label {{
+    color: {C_TEXT} !important;
+}}
+.stApp .stDataFrame {{
+    color: {C_TEXT} !important;
+}}
+
+/* Component styles */
 .kpi-card {{
     background: linear-gradient(135deg, {C_CARD_BG1} 0%, {C_CARD_BG2} 100%);
     border-radius: 12px; padding: 1.2rem; text-align: center;
@@ -570,12 +620,21 @@ with st.sidebar:
     st.caption("Dashboard models are trained on the full 10K dataset. Filters apply to descriptive visualizations only.")
     st.caption(f"**Dataset:** {len(df):,} respondents · 12 countries · 38 variables")
 
-fdf = df[
-    (df["country"].isin(sel_countries)) &
-    (df["industry"].isin(sel_industries)) &
-    (df["age"].between(age_range[0], age_range[1])) &
-    (df["gender"].isin(sel_genders) | df["gender"].isna())
-]
+_mask = pd.Series(True, index=df.index)
+if sel_countries:
+    _mask &= df["country"].isin(sel_countries)
+if sel_industries:
+    _mask &= df["industry"].isin(sel_industries)
+_mask &= df["age"].between(age_range[0], age_range[1])
+if sel_genders:
+    _mask &= (df["gender"].isin(sel_genders) | df["gender"].isna())
+fdf = df[_mask]
+
+if len(fdf) == 0:
+    st.markdown("# 🌍 Ctrl+Alt+Reskill")
+    st.markdown("##### Global Workforce Reskilling Gap — Intelligence Dashboard for Policy & Industry Leaders")
+    st.warning("No data matches the current filter selection. Please select at least one country, industry, and gender in the sidebar.")
+    st.stop()
 
 # ── Title ──
 st.markdown("# 🌍 Ctrl+Alt+Reskill")
@@ -698,9 +757,10 @@ with tabs[0]:
     with col_bar:
         st.markdown("#### Top Barriers to Reskilling")
         barriers = fdf["biggest_barrier"].value_counts().head(6)
-        fig_barriers = px.bar(x=barriers.values, y=barriers.index, orientation="h",
-                              color=barriers.values, color_continuous_scale=[[0, C_INFO], [1, C_RISK]],
-                              template=PLOTLY_TEMPLATE, labels={"x": "Respondents", "y": ""})
+        barriers_df = pd.DataFrame({"barrier": barriers.index, "count": barriers.values})
+        fig_barriers = px.bar(barriers_df, x="count", y="barrier", orientation="h",
+                              color="count", color_continuous_scale=[[0, C_INFO], [1, C_RISK]],
+                              template=PLOTLY_TEMPLATE, labels={"count": "Respondents", "barrier": ""})
         fig_barriers.update_layout(paper_bgcolor=CHART_BG, margin=CHART_MARGINS, height=300,
                                     showlegend=False, coloraxis_showscale=False, yaxis=dict(autorange="reversed"))
         st.plotly_chart(fig_barriers, use_container_width=True)
@@ -711,9 +771,10 @@ with tabs[0]:
         irm = irm[irm.index != "Unknown"]
         segment_colors = {"At-Risk Low Earner": C_RISK, "Complacent High Earner": C_WARN,
                           "Striving Upskiller": C_PRIMARY, "Invested High Earner": C_INFO}
-        fig_irm = px.bar(x=irm.index, y=irm.values,
-                         color=irm.index, color_discrete_map=segment_colors,
-                         template=PLOTLY_TEMPLATE, labels={"x": "", "y": "Count"})
+        irm_chart = pd.DataFrame({"segment": irm.index, "count": irm.values})
+        fig_irm = px.bar(irm_chart, x="segment", y="count",
+                         color="segment", color_discrete_map=segment_colors,
+                         template=PLOTLY_TEMPLATE, labels={"segment": "", "count": "Count"})
         fig_irm.update_layout(paper_bgcolor=CHART_BG, margin=CHART_MARGINS, height=300, showlegend=False)
         st.plotly_chart(fig_irm, use_container_width=True)
 
@@ -1474,7 +1535,8 @@ with tabs[5]:
     with pc3:
         st.markdown(kpi_card(f"{cdata['automation_vulnerability_idx'].mean():.2f}", "Avg Vulnerability", "", C_RISK), unsafe_allow_html=True)
     with pc4:
-        top_barrier_country = cdata["biggest_barrier"].mode().iloc[0] if len(cdata) > 0 else "N/A"
+        top_barrier_mode = cdata["biggest_barrier"].mode()
+        top_barrier_country = top_barrier_mode.iloc[0] if len(top_barrier_mode) > 0 else "N/A"
         st.markdown(kpi_card(top_barrier_country, "Top Barrier", "", C_WARN), unsafe_allow_html=True)
     with pc5:
         st.markdown(kpi_card(f"{dominant_persona}", "Dominant Persona", f"{dominant_pct:.0f}% of workforce", C_PURPLE), unsafe_allow_html=True)
@@ -1668,7 +1730,8 @@ with tabs[7]:
             pct = len(seg_data) / len(irm_df) * 100
             trans_rate = (seg_data["successful_reskill_transition"] == "Yes").mean() * 100
             avg_anxiety = seg_data["career_anxiety"].mean()
-            top_barrier = seg_data["biggest_barrier"].mode().iloc[0] if len(seg_data) > 0 else "N/A"
+            top_barrier_mode = seg_data["biggest_barrier"].mode()
+            top_barrier = top_barrier_mode.iloc[0] if len(top_barrier_mode) > 0 else "N/A"
             color = segment_color_map[seg]
             st.markdown(f"""
             <div class="persona-card" style="border-color:{color}">
