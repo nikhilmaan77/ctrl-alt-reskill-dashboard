@@ -18,7 +18,6 @@ from sklearn.metrics import (roc_curve, auc, confusion_matrix, classification_re
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from mlxtend.frequent_patterns import apriori, association_rules
-import statsmodels.api as sm
 import networkx as nx
 import warnings, os
 
@@ -399,30 +398,77 @@ def train_regression():
         "satisfaction_employer_ld", "career_confidence_5yr",
         "career_anxiety", "expected_role_change_timeline", "dev_tier_developed"
     ]
-    reg_df = df[feature_cols + ["willingness_to_reskill"]].dropna()
+
+    def fit_ols_manual(X_df, y_series):
+        """Fit OLS regression manually using numpy for Python 3.14 compatibility."""
+        from scipy import stats as sp_stats
+        X = X_df.values.astype(float)
+        y = y_series.values.astype(float)
+        # Add constant
+        X_const = np.column_stack([np.ones(len(X)), X])
+        feature_names = ["const"] + list(X_df.columns)
+        n, p = X_const.shape
+
+        # OLS: beta = (X'X)^-1 X'y
+        try:
+            XtX_inv = np.linalg.inv(X_const.T @ X_const)
+        except np.linalg.LinAlgError:
+            XtX_inv = np.linalg.pinv(X_const.T @ X_const)
+
+        beta = XtX_inv @ (X_const.T @ y)
+        y_hat = X_const @ beta
+        residuals = y - y_hat
+
+        # Degrees of freedom
+        df_resid = max(n - p, 1)
+        mse = np.sum(residuals ** 2) / df_resid
+
+        # Standard errors
+        se = np.sqrt(np.diag(XtX_inv) * mse)
+        se = np.where(se > 0, se, 1e-10)  # guard against zero
+
+        # t-stats and p-values
+        t_stats = beta / se
+        p_values = 2 * sp_stats.t.sf(np.abs(t_stats), df_resid)
+
+        # Confidence intervals (95%)
+        t_crit = sp_stats.t.ppf(0.975, df_resid)
+        ci_low = beta - t_crit * se
+        ci_high = beta + t_crit * se
+
+        # R-squared
+        ss_res = np.sum(residuals ** 2)
+        ss_tot = np.sum((y - np.mean(y)) ** 2)
+        r2 = 1 - ss_res / max(ss_tot, 1e-10)
+        r2_adj = 1 - (1 - r2) * (n - 1) / max(df_resid, 1)
+
+        return {
+            "params": pd.Series(beta, index=feature_names),
+            "pvalues": pd.Series(p_values, index=feature_names),
+            "ci_low": pd.Series(ci_low, index=feature_names),
+            "ci_high": pd.Series(ci_high, index=feature_names),
+            "rsquared_adj": r2_adj,
+            "residuals": residuals,
+            "fitted": y_hat,
+            "feature_names": feature_names
+        }
 
     # Model 1: Willingness to reskill
-    X1 = sm.add_constant(reg_df[feature_cols])
-    y1 = reg_df["willingness_to_reskill"]
-    model1 = sm.OLS(y1, X1).fit()
+    reg_df = df[feature_cols + ["willingness_to_reskill"]].dropna()
+    model1 = fit_ols_manual(reg_df[feature_cols], reg_df["willingness_to_reskill"])
 
     # Model 2: Career anxiety
-    reg_df2 = df[feature_cols + ["career_anxiety"]].dropna()
-    # Remove career_anxiety from predictors for model 2, add willingness
     feat2 = [c for c in feature_cols if c != "career_anxiety"]
-    X2 = sm.add_constant(reg_df2[feat2])
-    y2 = reg_df2["career_anxiety"]
-    model2 = sm.OLS(y2, X2).fit()
+    reg_df2 = df[feat2 + ["career_anxiety"]].dropna()
+    model2 = fit_ols_manual(reg_df2[feat2], reg_df2["career_anxiety"])
 
     # Multi-country models (willingness)
     country_models = {}
     for country in ["India", "USA", "Germany", "Nigeria"]:
         cdf = df[df["country"] == country][feature_cols + ["willingness_to_reskill"]].dropna()
         if len(cdf) > 50:
-            Xc = sm.add_constant(cdf[feature_cols])
-            yc = cdf["willingness_to_reskill"]
             try:
-                country_models[country] = sm.OLS(yc, Xc).fit()
+                country_models[country] = fit_ols_manual(cdf[feature_cols], cdf["willingness_to_reskill"])
             except Exception:
                 pass
 
@@ -1069,14 +1115,15 @@ with tabs[4]:
     col_r1, col_r2 = st.columns(2)
 
     def plot_coefficients(model, title, exclude=["const"], top_n=12):
-        params = model.params.drop(exclude, errors="ignore")
-        ci = model.conf_int().drop(exclude, errors="ignore")
-        pvals = model.pvalues.drop(exclude, errors="ignore")
+        params = model["params"].drop(exclude, errors="ignore")
+        ci_low = model["ci_low"].drop(exclude, errors="ignore")
+        ci_high = model["ci_high"].drop(exclude, errors="ignore")
+        pvals = model["pvalues"].drop(exclude, errors="ignore")
         coef_df = pd.DataFrame({
             "feature": [CLF_FEATURE_LABELS.get(f, f) for f in params.index],
             "coef": params.values,
-            "ci_low": ci.iloc[:, 0].values,
-            "ci_high": ci.iloc[:, 1].values,
+            "ci_low": ci_low.values,
+            "ci_high": ci_high.values,
             "significant": pvals.values < 0.05
         }).sort_values("coef", key=abs, ascending=True).tail(top_n)
 
@@ -1107,8 +1154,8 @@ with tabs[4]:
         st.plotly_chart(fig_anx, use_container_width=True)
 
     # R² metrics
-    r2_will = reg_res["willingness_model"].rsquared_adj
-    r2_anx = reg_res["anxiety_model"].rsquared_adj
+    r2_will = reg_res["willingness_model"]["rsquared_adj"]
+    r2_anx = reg_res["anxiety_model"]["rsquared_adj"]
     mc1, mc2 = st.columns(2)
     with mc1:
         st.markdown(kpi_card(f"{r2_will:.3f}", "Adj. R² — Willingness Model", "Variance explained", C_INFO), unsafe_allow_html=True)
@@ -1124,8 +1171,17 @@ with tabs[4]:
         age_conf_df, x="age", y="career_confidence_5yr",
         color="reskilling_engagement_score", color_continuous_scale=[[0, C_RISK], [0.5, C_WARN], [1, C_PRIMARY]],
         opacity=0.3, labels={"career_confidence_5yr": "Career Confidence (5yr)", "reskilling_engagement_score": "Reskilling Engagement"},
-        template=PLOTLY_TEMPLATE, trendline="lowess"
+        template=PLOTLY_TEMPLATE
     )
+    # Add manual trend line (age-group means) — no statsmodels dependency
+    age_trend = age_conf_df.groupby("age")["career_confidence_5yr"].mean().sort_index()
+    # Smooth with rolling average
+    age_trend_smooth = age_trend.rolling(window=5, center=True, min_periods=2).mean()
+    fig_age_conf.add_trace(go.Scatter(
+        x=age_trend_smooth.index, y=age_trend_smooth.values,
+        mode="lines", line=dict(color=C_WARN, width=3, dash="solid"),
+        name="Trend (smoothed)", showlegend=True
+    ))
     fig_age_conf.update_layout(paper_bgcolor=CHART_BG, margin=CHART_MARGINS, height=380,
                                 coloraxis_colorbar=dict(title="Engagement", thickness=12))
     st.plotly_chart(fig_age_conf, use_container_width=True)
@@ -1149,18 +1205,18 @@ with tabs[4]:
     country_models = reg_res["country_models"]
     if country_models:
         # Get top 3 features from global model
-        global_params = reg_res["willingness_model"].params.drop("const", errors="ignore")
+        global_params = reg_res["willingness_model"]["params"].drop("const", errors="ignore")
         top3_features = global_params.abs().nlargest(3).index.tolist()
         top3_labels = [CLF_FEATURE_LABELS.get(f, f) for f in top3_features]
 
         comparison_data = []
         for country, model in country_models.items():
             for feat, label in zip(top3_features, top3_labels):
-                if feat in model.params.index:
+                if feat in model["params"].index:
                     comparison_data.append({
                         "Country": country, "Feature": label,
-                        "Coefficient": model.params[feat],
-                        "Significant": model.pvalues[feat] < 0.05
+                        "Coefficient": model["params"][feat],
+                        "Significant": model["pvalues"][feat] < 0.05
                     })
 
         if comparison_data:
@@ -1179,8 +1235,8 @@ with tabs[4]:
         diag1, diag2 = st.columns(2)
         with diag1:
             st.markdown("##### Willingness Model — Residuals vs Fitted")
-            resid = reg_res["willingness_model"].resid
-            fitted = reg_res["willingness_model"].fittedvalues
+            resid = reg_res["willingness_model"]["residuals"]
+            fitted = reg_res["willingness_model"]["fitted"]
             fig_resid = px.scatter(x=fitted, y=resid, opacity=0.2, template=PLOTLY_TEMPLATE,
                                     labels={"x": "Fitted Values", "y": "Residuals"})
             fig_resid.add_hline(y=0, line_dash="dash", line_color=C_RISK)
