@@ -40,44 +40,39 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Color palette — mode-aware
-if "dark_mode" not in st.session_state:
-    st.session_state.dark_mode = True
-
-dark = st.session_state.dark_mode
-
-C_PRIMARY = "#00D4AA" if dark else "#007A5E"
-C_RISK = "#FF6B6B" if dark else "#C03030"
-C_WARN = "#FFD93D" if dark else "#9E7400"
-C_INFO = "#6C9BD2" if dark else "#2A5A8C"
-C_PURPLE = "#B07CFF" if dark else "#5E35A8"
-C_ORANGE = "#FF9F43" if dark else "#A06018"
-C_BG_CARD = "#1A1A2E" if dark else "#F4F6FA"
-C_BG_DARK = "#0F0F1A" if dark else "#FFFFFF"
-C_TEXT = "#E8E8E8" if dark else "#111111"
-C_TEXT_MUTED = "#999" if dark else "#555"
-C_TEXT_BODY = "#CCC" if dark else "#333"
-C_TEXT_SUB = "#777" if dark else "#666"
-C_TEXT_DESC = "#AAA" if dark else "#444"
-C_TEXT_POLICY = "#BBB" if dark else "#333"
-C_BORDER = "rgba(255,255,255,0.08)" if dark else "rgba(0,0,0,0.12)"
-C_CARD_SHADOW = "rgba(0,0,0,0.3)" if dark else "rgba(0,0,0,0.06)"
-C_CARD_BG1 = "#1A1A2E" if dark else "#F4F6FA"
-C_CARD_BG2 = "#16213E" if dark else "#EDF0F7"
-C_POLICY_BG1 = "#0D2137" if dark else "#EBF5F0"
-C_POLICY_BG2 = "#132743" if dark else "#E0EDE6"
-C_CALLOUT_BG = "rgba(255,255,255,0.04)" if dark else "rgba(0,0,0,0.04)"
-C_PERSONA_BG1 = "#1A1A2E" if dark else "#F4F6FA"
-C_PERSONA_BG2 = "#1E2A3A" if dark else "#EDF0F7"
-C_HEADLINE_BG1 = "#0A2E1F" if dark else "#E0F2E9"
-C_HEADLINE_BG2 = "#0D3B2A" if dark else "#D0E8DB"
-C_DIVIDER = "rgba(255,255,255,0.08)" if dark else "rgba(0,0,0,0.12)"
-C_GEO_LAND = "#1A1A2E" if dark else "#D8D8D8"
-C_GEO_OCEAN = "#0F0F1A" if dark else "#EEF0F2"
-C_SIM_BG1 = "#0D2137" if dark else "#EBF5F0"
-C_SIM_BG2 = "#132743" if dark else "#E0EDE6"
-C_CHART_LINE = "#555" if dark else "#AAA"
-C_CHART_DASH = "#666" if dark else "#999"
+# Color palette — dark mode
+C_PRIMARY = "#00D4AA"
+C_RISK = "#FF6B6B"
+C_WARN = "#FFD93D"
+C_INFO = "#6C9BD2"
+C_PURPLE = "#B07CFF"
+C_ORANGE = "#FF9F43"
+C_BG_CARD = "#1A1A2E"
+C_BG_DARK = "#0F0F1A"
+C_TEXT = "#E8E8E8"
+C_TEXT_MUTED = "#999"
+C_TEXT_BODY = "#CCC"
+C_TEXT_SUB = "#777"
+C_TEXT_DESC = "#AAA"
+C_TEXT_POLICY = "#BBB"
+C_BORDER = "rgba(255,255,255,0.08)"
+C_CARD_SHADOW = "rgba(0,0,0,0.3)"
+C_CARD_BG1 = "#1A1A2E"
+C_CARD_BG2 = "#16213E"
+C_POLICY_BG1 = "#0D2137"
+C_POLICY_BG2 = "#132743"
+C_CALLOUT_BG = "rgba(255,255,255,0.04)"
+C_PERSONA_BG1 = "#1A1A2E"
+C_PERSONA_BG2 = "#1E2A3A"
+C_HEADLINE_BG1 = "#0A2E1F"
+C_HEADLINE_BG2 = "#0D3B2A"
+C_DIVIDER = "rgba(255,255,255,0.08)"
+C_GEO_LAND = "#1A1A2E"
+C_GEO_OCEAN = "#0F0F1A"
+C_SIM_BG1 = "#0D2137"
+C_SIM_BG2 = "#132743"
+C_CHART_LINE = "#555"
+C_CHART_DASH = "#666"
 
 PERSONA_COLORS = [C_PRIMARY, C_RISK, C_WARN, C_INFO, C_PURPLE]
 
@@ -85,15 +80,15 @@ st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap');
 
-/* Streamlit page-level overrides for light/dark mode */
+/* Streamlit page-level overrides — dark mode */
 .stApp, .stApp > header {{
-    background-color: {"#0E1117" if dark else "#FFFFFF"} !important;
+    background-color: #0E1117 !important;
 }}
 .stApp [data-testid="stSidebar"] {{
-    background-color: {"#161B22" if dark else "#F0F2F6"} !important;
+    background-color: #161B22 !important;
 }}
 .stApp [data-testid="stSidebar"] * {{
-    color: {"#E8E8E8" if dark else "#1A1A2E"} !important;
+    color: #E8E8E8 !important;
 }}
 .stApp .main .block-container {{
     padding: 1rem 2rem; max-width: 1400px;
@@ -109,7 +104,7 @@ st.markdown(f"""
     color: {C_TEXT} !important;
 }}
 .stApp .stTabs [data-baseweb="tab-list"] {{
-    background-color: {"#161B22" if dark else "#F5F5F5"} !important;
+    background-color: #161B22 !important;
     border-radius: 8px;
 }}
 .stApp .stTabs [data-baseweb="tab"] {{
@@ -125,7 +120,7 @@ st.markdown(f"""
     color: {C_TEXT_MUTED} !important;
 }}
 .stApp [data-testid="stExpander"] {{
-    background-color: {"#161B22" if dark else "#F5F5F5"} !important;
+    background-color: #161B22 !important;
     border-color: {C_BORDER} !important;
 }}
 .stApp .stSelectbox label, .stApp .stMultiSelect label, .stApp .stSlider label {{
@@ -199,24 +194,22 @@ EDU_ORDER = ["Below High School", "High School/Diploma", "Bachelor's", "Master's
 ROLE_ORDER = ["Entry-level", "Mid-level", "Senior", "Manager/Director", "Executive/C-suite"]
 AUTO_BUCKET_ORDER = ["0-20%", "21-40%", "41-60%", "61-80%", "81-100%"]
 
-PLOTLY_TEMPLATE = "plotly_dark" if dark else "plotly_white"
+PLOTLY_TEMPLATE = "plotly_dark"
 CHART_BG = "rgba(0,0,0,0)"
 CHART_MARGINS = dict(l=60, r=30, t=50, b=50)
 CHART_FONT_COLOR = C_TEXT
-CHART_GRID_COLOR = "#333" if dark else "#DDD"
-C_CHART_AXIS = "#888" if dark else "#555"
+CHART_GRID_COLOR = "#333"
+C_CHART_AXIS = "#888"
 
-# Register a custom plotly layout default so ALL charts inherit font color
+# Custom plotly template with proper font colors
 import plotly.io as pio
 pio.templates["custom_dark"] = pio.templates["plotly_dark"]
-pio.templates["custom_light"] = pio.templates["plotly_white"]
-_tpl_name = "custom_dark" if dark else "custom_light"
-pio.templates[_tpl_name].layout.font = dict(color=CHART_FONT_COLOR, family="DM Sans, sans-serif")
-pio.templates[_tpl_name].layout.paper_bgcolor = CHART_BG
-pio.templates[_tpl_name].layout.plot_bgcolor = CHART_BG
-pio.templates[_tpl_name].layout.xaxis = dict(gridcolor=CHART_GRID_COLOR, zerolinecolor=CHART_GRID_COLOR)
-pio.templates[_tpl_name].layout.yaxis = dict(gridcolor=CHART_GRID_COLOR, zerolinecolor=CHART_GRID_COLOR)
-PLOTLY_TEMPLATE = _tpl_name
+pio.templates["custom_dark"].layout.font = dict(color=CHART_FONT_COLOR, family="DM Sans, sans-serif")
+pio.templates["custom_dark"].layout.paper_bgcolor = CHART_BG
+pio.templates["custom_dark"].layout.plot_bgcolor = CHART_BG
+pio.templates["custom_dark"].layout.xaxis = dict(gridcolor=CHART_GRID_COLOR, zerolinecolor=CHART_GRID_COLOR)
+pio.templates["custom_dark"].layout.yaxis = dict(gridcolor=CHART_GRID_COLOR, zerolinecolor=CHART_GRID_COLOR)
+PLOTLY_TEMPLATE = "custom_dark"
 
 DERIVED_VARS = [
     "automation_vulnerability_idx", "reskilling_engagement_score",
@@ -618,11 +611,6 @@ df = load_data()
 # ── Sidebar ──
 with st.sidebar:
     st.markdown("### 🌍 Global Filters")
-    mode_toggle = st.toggle("🌙 Dark Mode", value=st.session_state.dark_mode, key="mode_toggle")
-    if mode_toggle != st.session_state.dark_mode:
-        st.session_state.dark_mode = mode_toggle
-        st.rerun()
-    st.markdown("---")
     sel_countries = st.multiselect("Countries", df["country"].unique().tolist(),
                                     default=df["country"].unique().tolist())
     sel_industries = st.multiselect("Industries", df["industry"].unique().tolist(),
