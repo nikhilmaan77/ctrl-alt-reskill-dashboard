@@ -10,7 +10,7 @@ A WEF/ILO-grade analytical dashboard built on 10,000 synthetic survey responses,
 | 2 | Who Successfully Reskills? | Classification (Gradient Boosting + SHAP) | Feature importance, What-If Simulator, policy levers |
 | 3 | Five Global Workforce Personas | Clustering (K-Means, k=5) | Radar profiles, country × persona heatmap, persona cards |
 | 4 | Behavioural Patterns | Association Rule Mining (Apriori) | Network graph, Sankey flow, policy bundles |
-| 5 | Drivers of Willingness & Anxiety | Regression (OLS) | Coefficient plots, multi-country comparison, inverted-U insight |
+| 5 | Drivers of Willingness & Anxiety | Regression (Random Forest + SHAP) | Feature importance, inverted-U visualization, multi-country comparison |
 | 6 | Geographic Intelligence | Cross-country Comparison | Choropleth, bubble chart, country profiles with personas |
 | 7 | The Gender Gap | Gender Comparison | Distribution plots, barrier gaps, willingness-vs-access |
 | 8 | Income-Reskilling Matrix | 2×2 Framework | Quadrant scatter, treemap, segment policy recommendations |
