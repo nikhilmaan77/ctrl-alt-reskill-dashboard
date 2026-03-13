@@ -623,6 +623,10 @@ def _filter_label(fdf, df):
         parts.append(f"{n_industries} industries")
     return " · ".join(parts) if parts else "global sample"
 
+def _is_filtered(fdf, df):
+    """Check if the current view is filtered or showing all data."""
+    return len(fdf) < len(df) * 0.98  # allow small float tolerance
+
 def _compare_to_global(val, global_val, metric_name, higher_is="better"):
     """Generate comparison text vs global baseline."""
     diff = val - global_val
@@ -635,62 +639,74 @@ def _compare_to_global(val, global_val, metric_name, higher_is="better"):
         return f"<b>{magnitude:.1f}pp {direction}</b> the global average ({global_val*100:.0f}%)"
     return f"<b>{abs(diff):.2f} {direction}</b> the global average ({global_val:.2f})"
 
+def _pp_vs_global(val, global_val, is_filtered):
+    """Return '(+Xpp vs global)' if filtered, or empty string if unfiltered."""
+    if not is_filtered:
+        return ""
+    diff = val - global_val
+    return f" ({diff:+.0f}pp vs global)"
+
 def gen_tab1_policy(fdf, df, shap_ratio, enrollment_rate, emp_support_rate, avg_anx_action):
     """Dynamic policy panel for Executive Summary."""
     label = _filter_label(fdf, df)
+    filtered = _is_filtered(fdf, df)
     g_enroll = (df["enrolled_reskilling"] == "Yes").mean() * 100
     g_support = (df["employer_provides_reskilling"] == "Yes").mean() * 100
+    g_anx = df["anxiety_to_action_ratio"].mean()
     items = []
     items.append(
         f"<b>Employer-led reskilling is {shap_ratio:.1f}× more predictive of success than education level.</b> "
         f"{'Policy should prioritize workplace training investment over traditional degree subsidies.' if emp_support_rate < 50 else 'Current employer investment is above average — focus on extending this model to underperforming sectors.'}"
     )
-    enroll_cmp = enrollment_rate - g_enroll
+    cmp_enroll = _pp_vs_global(enrollment_rate, g_enroll, filtered)
     if enrollment_rate < 30:
-        items.append(f"Only <b>{enrollment_rate:.0f}%</b> of this segment is enrolled in reskilling ({enroll_cmp:+.0f}pp vs global) — urgent scale-up with targeted outreach is needed.")
+        items.append(f"Only <b>{enrollment_rate:.0f}%</b> enrollment{cmp_enroll} — urgent scale-up with targeted outreach is needed.")
     elif enrollment_rate < 50:
-        items.append(f"<b>{enrollment_rate:.0f}%</b> enrollment ({enroll_cmp:+.0f}pp vs global) shows moderate engagement. Focus on converting awareness into sustained participation.")
+        items.append(f"<b>{enrollment_rate:.0f}%</b> enrollment{cmp_enroll} shows moderate engagement. Focus on converting awareness into sustained participation.")
     else:
-        items.append(f"<b>{enrollment_rate:.0f}%</b> enrollment ({enroll_cmp:+.0f}pp vs global) is strong. Shift focus from enrollment to completion and outcomes measurement.")
+        items.append(f"<b>{enrollment_rate:.0f}%</b> enrollment{cmp_enroll} is strong. Shift focus from enrollment to completion and outcomes measurement.")
     if avg_anx_action > 2.5:
         items.append(f"An anxiety-to-action ratio of <b>{avg_anx_action:.1f}</b> signals significant paralysis — workers recognize the need but aren't acting. Structured, low-barrier entry programs are critical.")
     else:
         items.append(f"An anxiety-to-action ratio of <b>{avg_anx_action:.1f}</b> indicates reasonable engagement relative to concern. Maintain momentum through employer and government program quality.")
-    support_cmp = emp_support_rate - g_support
+    cmp_support = _pp_vs_global(emp_support_rate, g_support, filtered)
     if emp_support_rate < 35:
-        items.append(f"Only <b>{emp_support_rate:.0f}%</b> employer support ({support_cmp:+.0f}pp vs global) — mandate minimum L&D investment thresholds for employers in this segment.")
+        items.append(f"Only <b>{emp_support_rate:.0f}%</b> employer support{cmp_support} — mandate minimum L&D investment thresholds for employers in this segment.")
     else:
-        items.append(f"<b>{emp_support_rate:.0f}%</b> employer support ({support_cmp:+.0f}pp vs global) — {'a structural gap to address through tax incentives.' if emp_support_rate < 50 else 'study and replicate the best-performing employer programs.'}")
+        items.append(f"<b>{emp_support_rate:.0f}%</b> employer support{cmp_support} — {'a structural gap to address through tax incentives.' if emp_support_rate < 50 else 'study and replicate the best-performing employer programs.'}")
     return items
 
 def gen_tab2_callout(fdf, df, shap_ratio):
     """Dynamic callout for classification key finding."""
-    f_trans = (fdf["successful_reskill_transition"] == "Yes").mean() * 100
+    filtered = _is_filtered(fdf, df)
     f_emp_trans = fdf[fdf["employer_provides_reskilling"] == "Yes"]["successful_reskill_transition_bin"].mean() * 100 if (fdf["employer_provides_reskilling"] == "Yes").any() else 0
     f_noemp_trans = fdf[fdf["employer_provides_reskilling"] == "No"]["successful_reskill_transition_bin"].mean() * 100 if (fdf["employer_provides_reskilling"] == "No").any() else 0
     gap = f_emp_trans - f_noemp_trans
+    segment_label = "In this segment, workers" if filtered else "Workers"
     return (
         f"<b>Employer reskilling support</b> and <b>upskilling hours per week</b> are the strongest predictors of successful transitions — "
         f"far outweighing education level ({shap_ratio:.1f}× less predictive). "
-        f"In this segment, workers with employer support transition at <b>{f_emp_trans:.0f}%</b> vs <b>{f_noemp_trans:.0f}%</b> without ({gap:+.0f}pp gap)."
+        f"{segment_label} with employer support transition at <b>{f_emp_trans:.0f}%</b> vs <b>{f_noemp_trans:.0f}%</b> without ({gap:+.0f}pp gap)."
     )
 
 def gen_tab2_policy(fdf, df, shap_ratio, hours_threshold, clf_res):
     """Dynamic policy panel for classification."""
     label = _filter_label(fdf, df)
+    filtered = _is_filtered(fdf, df)
     f_trans = (fdf["successful_reskill_transition"] == "Yes").mean() * 100
     g_trans = (df["successful_reskill_transition"] == "Yes").mean() * 100
     avg_hours_success = fdf[fdf["successful_reskill_transition"] == "Yes"]["upskilling_hours_per_week"].mean()
     avg_hours_fail = fdf[fdf["successful_reskill_transition"] == "No"]["upskilling_hours_per_week"].mean()
     items = []
+    trans_cmp = f" ({f_trans - g_trans:+.0f}pp vs global)" if filtered else ""
     items.append(
         f"<b>Incentivize employer-led reskilling through tax credits</b> rather than expanding university subsidies. "
         f"Employer support is {shap_ratio:.1f}× more impactful than education level. "
-        f"In this segment, the transition rate is {f_trans:.0f}% ({f_trans - g_trans:+.0f}pp vs global)."
+        f"{'In this segment, the' if filtered else 'The'} transition rate is {f_trans:.0f}%{trans_cmp}."
     )
     items.append(
         f"<b>Structured upskilling of {hours_threshold}+ hours/week</b> is the threshold for impact. "
-        f"Successful transitioners in this segment average <b>{avg_hours_success:.1f} hrs/week</b> vs <b>{avg_hours_fail:.1f}</b> for non-transitioners."
+        f"Successful transitioners {'in this segment ' if filtered else ''}average <b>{avg_hours_success:.1f} hrs/week</b> vs <b>{avg_hours_fail:.1f}</b> for non-transitioners."
     )
     dev_tier_counts = fdf["dev_tier"].value_counts()
     dominant_tier = dev_tier_counts.index[0] if len(dev_tier_counts) > 0 else "Mixed"
@@ -739,15 +755,16 @@ def gen_tab3_persona_desc(fdf, persona_name, persona_data):
 def gen_tab3_policy(fdf, df, df_with_persona):
     """Dynamic policy panel for clustering."""
     label = _filter_label(fdf, df)
+    filtered = _is_filtered(fdf, df)
     fp = df_with_persona[df_with_persona.index.isin(fdf.index)]
     if len(fp) == 0:
         return ["Insufficient data for persona-based analysis with current filters."]
     persona_dist = fp["persona"].value_counts(normalize=True) * 100
     largest = persona_dist.index[0] if len(persona_dist) > 0 else "N/A"
     largest_pct = persona_dist.iloc[0] if len(persona_dist) > 0 else 0
-    smallest = persona_dist.index[-1] if len(persona_dist) > 1 else "N/A"
+    scope = f"In {label}" if filtered else "Across the global workforce"
     items = []
-    items.append(f"<b>In this segment ({label}), {largest} dominate at {largest_pct:.0f}%.</b> Policy design should prioritize interventions for this persona.")
+    items.append(f"<b>{scope}, {largest} dominate at {largest_pct:.0f}%.</b> Policy design should prioritize interventions for this persona.")
     if "Anxious but Paralyzed" in persona_dist.index:
         anx_pct = persona_dist["Anxious but Paralyzed"]
         if anx_pct > 25:
@@ -757,50 +774,55 @@ def gen_tab3_policy(fdf, df, df_with_persona):
     if "Structurally Unsupported" in persona_dist.index:
         unsup_pct = persona_dist["Structurally Unsupported"]
         if unsup_pct > 20:
-            items.append(f"<b>{unsup_pct:.0f}% are Structurally Unsupported</b> — willing workers failed by institutions. Mandate minimum L&D investment for employers in this segment.")
+            items.append(f"<b>{unsup_pct:.0f}% are Structurally Unsupported</b> — willing workers failed by institutions. Mandate minimum L&D investment for employers.")
     if "Complacent Incumbents" in persona_dist.index:
         comp_pct = persona_dist["Complacent Incumbents"]
         if comp_pct > 20:
             items.append(f"<b>{comp_pct:.0f}% are Complacent Incumbents</b> — the hidden risk. Sector-specific future-of-work briefings and disruption forecasts are needed.")
-    items.append(f"One-size-fits-all reskilling policies will not serve this segment. The persona mix requires {'at least 3 distinct intervention strategies' if len(persona_dist) >= 3 else 'targeted, persona-specific programming'}.")
+    items.append(f"One-size-fits-all reskilling policies are ineffective. The persona mix requires {'at least 3 distinct intervention strategies' if len(persona_dist) >= 3 else 'targeted, persona-specific programming'}.")
     return items
 
 def gen_tab4_policy(fdf, df):
     """Dynamic policy bundles for association rules."""
-    label = _filter_label(fdf, df)
+    filtered = _is_filtered(fdf, df)
+    scope = "this segment" if filtered else "the workforce"
     cost_pct = (fdf[fdf["biggest_barrier"] == "Cost"].shape[0] / max(len(fdf), 1)) * 100
     time_pct = (fdf[fdf["biggest_barrier"] == "Time"].shape[0] / max(len(fdf), 1)) * 100
     fam_pct = (fdf[fdf["biggest_barrier"] == "Family Responsibilities"].shape[0] / max(len(fdf), 1)) * 100
     emp_yes_sat = fdf[fdf["employer_provides_reskilling"] == "Yes"]["satisfaction_employer_ld"].mean() if (fdf["employer_provides_reskilling"] == "Yes").any() else 0
     emp_no_sat = fdf[fdf["employer_provides_reskilling"] == "No"]["satisfaction_employer_ld"].mean() if (fdf["employer_provides_reskilling"] == "No").any() else 0
-    top_barrier = fdf["biggest_barrier"].value_counts().index[0] if len(fdf) > 0 else "N/A"
+    top_barrier_vc = fdf["biggest_barrier"].value_counts()
+    top_barrier = top_barrier_vc.index[0] if len(top_barrier_vc) > 0 else "N/A"
     items = []
     if cost_pct > 20:
-        items.append(f"<b>Cost is cited by {cost_pct:.0f}% of this segment</b> — reskilling vouchers and income-replacement during training are essential. {'Pair with time-flexibility policies since Time is also at ' + f'{time_pct:.0f}%.' if time_pct > 15 else ''}")
+        time_note = f" Pair with time-flexibility policies since Time is also at {time_pct:.0f}%." if time_pct > 15 else ""
+        items.append(f"<b>Cost is cited by {cost_pct:.0f}% of {scope}</b> — reskilling vouchers and income-replacement during training are essential.{time_note}")
     if time_pct > 20:
-        items.append(f"<b>Time is cited by {time_pct:.0f}% of this segment</b> — learning leave legislation and employer-protected upskilling hours should be explored.")
+        items.append(f"<b>Time is cited by {time_pct:.0f}% of {scope}</b> — learning leave legislation and employer-protected upskilling hours should be explored.")
     if fam_pct > 10:
-        items.append(f"<b>Family Responsibilities affect {fam_pct:.0f}% of this segment</b> — childcare subsidies and flexible/asynchronous learning formats must be bundled with reskilling programs.")
+        items.append(f"<b>Family Responsibilities affect {fam_pct:.0f}% of {scope}</b> — childcare subsidies and flexible/asynchronous learning formats must be bundled with reskilling programs.")
     if emp_yes_sat > 0 and emp_no_sat > 0:
         sat_gap = emp_yes_sat - emp_no_sat
         items.append(f"<b>Employer-supported workers rate L&D satisfaction {emp_yes_sat:.1f}/5 vs {emp_no_sat:.1f}/5 without</b> (gap: {sat_gap:+.1f}). Extending employer reskilling models to underserved sectors through public-private partnerships is high-impact.")
     if not items:
-        items.append(f"The dominant barrier in this segment is <b>{top_barrier}</b> at {fdf['biggest_barrier'].value_counts().iloc[0] / len(fdf) * 100:.0f}%. Policy should target this barrier specifically.")
-    items.append(f"The behavioural flow (Industry → Barrier → Skill) for this segment should inform the design of industry-specific reskilling curricula rather than generic programs.")
+        tb_pct = top_barrier_vc.iloc[0] / max(len(fdf), 1) * 100 if len(top_barrier_vc) > 0 else 0
+        items.append(f"The dominant barrier is <b>{top_barrier}</b> at {tb_pct:.0f}%. Policy should target this barrier specifically.")
+    items.append(f"The behavioural flow (Industry → Barrier → Skill) should inform the design of industry-specific reskilling curricula rather than generic programs.")
     return items
 
 def gen_tab5_policy(fdf, df, young_conf, young_engage, old_conf, old_engage, peak_anxiety):
     """Dynamic policy for regression."""
     label = _filter_label(fdf, df)
+    filtered = _is_filtered(fdf, df)
     avg_willingness = fdf["willingness_to_reskill"].mean()
     avg_anxiety = fdf["career_anxiety"].mean()
     g_will = df["willingness_to_reskill"].mean()
     items = []
+    will_cmp = f" ({'above' if avg_willingness > g_will else 'below'} global average of {g_will:.1f})" if filtered else ""
     items.append(
         f"<b>Moderate urgency drives action; catastrophist framing causes paralysis.</b> "
         f"Peak willingness occurs at anxiety level {peak_anxiety}/5. "
-        f"This segment averages {avg_anxiety:.1f}/5 anxiety and {avg_willingness:.1f}/5 willingness "
-        f"({'above' if avg_willingness > g_will else 'below'} global average of {g_will:.1f}). "
+        f"{'This segment averages' if filtered else 'The workforce averages'} {avg_anxiety:.1f}/5 anxiety and {avg_willingness:.1f}/5 willingness{will_cmp}. "
         f"{'Emphasize opportunity framing.' if avg_anxiety > 3.5 else 'Current messaging approach appears effective.'}"
     )
     if young_conf > old_conf and young_engage < old_engage:
@@ -809,15 +831,15 @@ def gen_tab5_policy(fdf, df, young_conf, young_engage, old_conf, old_engage, pea
             f"Early-career intervention programs are critical before complacency sets in."
         )
     elif young_engage >= old_engage:
-        items.append(f"Young workers in this segment show strong engagement ({young_engage:.2f}) — atypical of the broader population. Investigate what's driving this and replicate.")
+        items.append(f"Young workers show strong engagement ({young_engage:.2f}) — atypical of the broader population. Investigate what's driving this and replicate.")
     avg_ld_sat = fdf["satisfaction_employer_ld"].mean()
     items.append(
-        f"<b>L&D satisfaction averages {avg_ld_sat:.1f}/5 in this segment</b> — "
+        f"<b>L&D satisfaction averages {avg_ld_sat:.1f}/5 </b> — "
         f"{'improving program quality, not just availability, should be a regulatory focus.' if avg_ld_sat < 3.5 else 'relatively strong, suggesting current employer programs are effective. Study and scale best practices.'}"
     )
     n_countries = fdf["country"].nunique()
     if n_countries >= 3:
-        items.append("The same top predictors hold across multiple countries in this segment, reinforcing global applicability of these findings.")
+        items.append("The same top predictors hold across multiple countries, reinforcing global applicability of these findings.")
     elif n_countries == 1:
         country = fdf["country"].iloc[0]
         items.append(f"<b>Findings are specific to {country}</b> — validate against other markets before generalizing policy recommendations.")
@@ -826,13 +848,14 @@ def gen_tab5_policy(fdf, df, young_conf, young_engage, old_conf, old_engage, pea
 def gen_tab6_policy(fdf, df):
     """Dynamic geographic policy."""
     label = _filter_label(fdf, df)
+    filtered = _is_filtered(fdf, df)
     n_countries = fdf["country"].nunique()
     dev_counts = fdf["dev_tier"].value_counts()
     items = []
     if "Developing" in dev_counts.index and "Developed" in dev_counts.index:
         dev_support = (fdf[fdf["dev_tier"] == "Developed"]["employer_provides_reskilling"] == "Yes").mean() * 100
         devg_support = (fdf[fdf["dev_tier"] == "Developing"]["employer_provides_reskilling"] == "Yes").mean() * 100
-        items.append(f"<b>Developing economies in this segment have {devg_support:.0f}% employer support vs {dev_support:.0f}% in developed</b> — international development finance should prioritize reskilling infrastructure.")
+        items.append(f"<b>Developing economies have {devg_support:.0f}% employer support vs {dev_support:.0f}% in developed</b> — international development finance should prioritize reskilling infrastructure.")
     elif "Developing" in dev_counts.index:
         cost_pct = (fdf["biggest_barrier"] == "Cost").mean() * 100
         items.append(f"<b>This segment is entirely developing economies</b> with Cost as barrier for {cost_pct:.0f}%. Public funding for reskilling with income support during training is essential.")
@@ -848,7 +871,7 @@ def gen_tab6_policy(fdf, df):
             items.append(f"<b>Danger zone countries (high vulnerability, low engagement): {danger_list}.</b> These need immediate national reskilling strategies with public funding.")
     top_barrier = fdf["biggest_barrier"].value_counts()
     if len(top_barrier) > 0:
-        items.append(f"<b>The dominant barrier across this segment is {top_barrier.index[0]} ({top_barrier.iloc[0]/len(fdf)*100:.0f}%)</b> — national policy design should prioritize this barrier.")
+        items.append(f"<b>The dominant barrier is {top_barrier.index[0]} ({top_barrier.iloc[0]/len(fdf)*100:.0f}%)</b> — national policy design should prioritize this barrier.")
     if not items:
         items.append("Select multiple countries to enable cross-country comparison insights.")
     return items
@@ -873,7 +896,7 @@ def gen_tab7_policy(fdf, f_will, m_will, f_enroll, m_enroll, fam_barrier_f, fam_
         items.append(f"<b>Enrollment gap: {enroll_gap:+.1f}pp (F vs M).</b> {'Targeted female enrollment drives with flexible scheduling are needed.' if enroll_gap < -3 else 'Female enrollment is strong — focus on completion and outcome parity.'}")
     return items
 
-def gen_tab8_policy(fdf):
+def gen_tab8_policy(fdf, df=None):
     """Dynamic income-reskilling matrix policy."""
     irm_df = fdf[fdf["income_reskilling_gap"] != "Unknown"]
     if len(irm_df) == 0:
@@ -883,7 +906,7 @@ def gen_tab8_policy(fdf):
     if "At-Risk Low Earner" in seg_dist.index:
         ar_pct = seg_dist["At-Risk Low Earner"]
         ar_trans = (irm_df[irm_df["income_reskilling_gap"] == "At-Risk Low Earner"]["successful_reskill_transition"] == "Yes").mean() * 100
-        items.append(f"<b>At-Risk Low Earners are {ar_pct:.0f}% of this segment with only {ar_trans:.0f}% transition rate.</b> Combined financial + time support is needed — vouchers alone won't work if workers can't reduce working hours.")
+        items.append(f"<b>At-Risk Low Earners are {ar_pct:.0f}% with only {ar_trans:.0f}% transition rate.</b> Combined financial + time support is needed — vouchers alone won't work if workers can't reduce working hours.")
     if "Complacent High Earner" in seg_dist.index:
         ch_pct = seg_dist["Complacent High Earner"]
         if ch_pct > 30:
