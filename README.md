@@ -2,18 +2,19 @@
 
 A WEF/ILO-grade analytical dashboard built on 10,000 synthetic survey responses, designed to present actionable reskilling policy insights to government ministers, industry leaders, and international policymakers. Features dark/light mode toggle.
 
-## Dashboard Structure (8 Tabs)
+## Dashboard Structure (9 Tabs)
 
 | Tab | Title | Method | Key Deliverable |
 |-----|-------|--------|----------------|
 | 1 | Executive Summary | KPI Overview | Headline stats, global choropleth, persona & matrix thumbnails |
-| 2 | Who Successfully Reskills? | Classification (Gradient Boosting + SHAP) | Feature importance, What-If Simulator, policy levers |
-| 3 | Five Global Workforce Personas | Clustering (K-Means, k=5) | Radar profiles, country × persona heatmap, persona cards |
-| 4 | Behavioural Patterns | Association Rule Mining (Apriori) | Network graph, Sankey flow, policy bundles |
-| 5 | Drivers of Willingness & Anxiety | Regression (Random Forest + SHAP) | Feature importance, inverted-U visualization, multi-country comparison |
-| 6 | Geographic Intelligence | Cross-country Comparison | Choropleth, bubble chart, country profiles with personas |
-| 7 | The Gender Gap | Gender Comparison | Distribution plots, barrier gaps, willingness-vs-access |
-| 8 | Income-Reskilling Matrix | 2×2 Framework | Quadrant scatter, treemap, segment policy recommendations |
+| 2 | Data Profile & Exploration | EDA / Descriptive | Data quality, univariate distributions, correlation heatmap |
+| 3 | Who Successfully Reskills? | Classification (Gradient Boosting + SHAP) | Feature importance, What-If Simulator, policy levers |
+| 4 | Five Global Workforce Personas | Clustering (K-Means, k=5) | Radar profiles, country × persona heatmap, persona cards |
+| 5 | Behavioural Patterns | Association Rule Mining (Apriori) | Network graph, Sankey flow, policy bundles |
+| 6 | Drivers of Willingness & Anxiety | Regression (Random Forest + SHAP) | Feature importance, inverted-U visualization, multi-country comparison |
+| 7 | Geographic Intelligence | Cross-country Comparison | Choropleth, bubble chart, country profiles with personas |
+| 8 | The Gender Gap | Gender Comparison | Distribution plots, barrier gaps, willingness-vs-access |
+| 9 | Income-Reskilling Matrix | 2×2 Framework | Quadrant scatter, treemap, segment policy recommendations |
 
 Every tab follows a 3-layer structure: (1) Analytical Visualization → (2) Model Validation → (3) Policy Implications.
 

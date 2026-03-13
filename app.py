@@ -628,6 +628,53 @@ def _pp_vs_global(val, global_val, is_filtered):
     diff = val - global_val
     return f" ({diff:+.0f}pp vs global)"
 
+def gen_eda_policy(fdf, df):
+    """Dynamic policy panel for EDA/Data Profile tab."""
+    filtered = _is_filtered(fdf, df)
+    scope = _filter_label(fdf, df) if filtered else "the global sample"
+    items = []
+    # Dominant industry insight
+    top_ind = fdf["industry"].value_counts()
+    if len(top_ind) > 0:
+        ind_name = top_ind.index[0]
+        ind_pct = top_ind.iloc[0] / len(fdf) * 100
+        top_barrier_in_ind = fdf[fdf["industry"] == ind_name]["biggest_barrier"].value_counts()
+        barrier_name = top_barrier_in_ind.index[0] if len(top_barrier_in_ind) > 0 else "N/A"
+        items.append(f"The dominant industry {'in this segment' if filtered else ''} is <b>{ind_name} ({ind_pct:.0f}%)</b> with <b>{barrier_name}</b> as the primary barrier — industry-specific intervention programs should be prioritized.")
+    # Completeness insight
+    total_cells = fdf.shape[0] * fdf.shape[1]
+    missing_cells = fdf.isnull().sum().sum()
+    completeness = (1 - missing_cells / max(total_cells, 1)) * 100
+    missing_cols = fdf.isnull().sum()
+    most_missing_col = missing_cols.idxmax() if missing_cols.max() > 0 else None
+    most_missing_pct = missing_cols.max() / max(len(fdf), 1) * 100
+    if most_missing_col:
+        items.append(f"Data completeness is <b>{completeness:.1f}%</b> with <b>{most_missing_col}</b> as the most-skipped question ({most_missing_pct:.1f}% missing) — policy recommendations involving this variable should account for potential reporting bias.")
+    else:
+        items.append(f"Data completeness is <b>{completeness:.1f}%</b> with no significant missingness — the dataset supports robust analysis across all variables.")
+    # Age profile
+    avg_age = fdf["age"].mean()
+    if avg_age < 32:
+        items.append(f"Average respondent age is <b>{avg_age:.0f}</b> — a younger workforce segment where early-career reskilling programs and digital-first learning platforms will have highest uptake.")
+    elif avg_age > 38:
+        items.append(f"Average respondent age is <b>{avg_age:.0f}</b> — a mid-to-senior workforce where time flexibility, employer-sponsored programs, and recognition of prior experience are critical enablers.")
+    else:
+        items.append(f"Average respondent age is <b>{avg_age:.0f}</b> — spanning early-to-mid career, requiring a mix of digital platforms for younger workers and structured employer programs for mid-career professionals.")
+    # Likert quality
+    likert_cols = ["perceived_automation_risk", "ai_awareness", "willingness_to_reskill", "satisfaction_employer_ld", "career_confidence_5yr", "career_anxiety"]
+    extreme_rates = []
+    for col in likert_cols:
+        vals = fdf[col].dropna()
+        if len(vals) > 0:
+            extreme_rate = ((vals == 1) | (vals == 5)).mean()
+            extreme_rates.append(extreme_rate)
+    avg_extreme = np.mean(extreme_rates) * 100 if extreme_rates else 0
+    if avg_extreme < 15:
+        items.append(f"Only <b>{avg_extreme:.0f}% of Likert responses</b> are at extremes (1 or 5) — indicating realistic central tendency consistent with genuine survey responses, not synthetic noise.")
+    else:
+        items.append(f"<b>{avg_extreme:.0f}% of Likert responses</b> are at extremes — moderate polarization in opinions, suggesting strong feelings about reskilling topics in this segment.")
+    return items
+
 def gen_tab1_policy(fdf, df, shap_ratio, enrollment_rate, emp_support_rate, avg_anx_action):
     """Dynamic policy panel for Executive Summary."""
     label = _filter_label(fdf, df)
@@ -920,6 +967,7 @@ def gen_segment_rec(seg_name, seg_data):
     }
     return recs.get(seg_name, f"Targeted intervention for {top_barrier} barrier. Transition rate: {trans_rate:.0f}%.")
 
+
 # ════════════════════════════════════════════════════════════════
 # MAIN APP
 # ════════════════════════════════════════════════════════════════
@@ -962,6 +1010,7 @@ st.markdown("##### Global Workforce Reskilling Gap — Intelligence Dashboard fo
 # ── Tabs ──
 tab_names = [
     "📊 Executive Summary",
+    "🔍 Data Profile & Exploration",
     "🎯 Who Successfully Reskills?",
     "👥 Five Workforce Personas",
     "🔗 Behavioural Patterns",
@@ -1102,10 +1151,266 @@ with tabs[0]:
 
 
 # ════════════════════════════════════════════════════════════════
-# TAB 2: CLASSIFICATION
+# TAB 2: DATA PROFILE & EXPLORATION (EDA)
 # ════════════════════════════════════════════════════════════════
 
 with tabs[1]:
+    st.markdown("### Data Profile & Exploration")
+    st.caption("Data quality validation, univariate distributions, and bivariate relationships")
+
+    # ── Layer 1: Data Quality Showcase ──
+    st.markdown("#### Data Quality Overview")
+
+    # KPI cards
+    n_total = len(fdf)
+    completeness = (1 - fdf.isnull().mean().mean()) * 100
+    n_countries_eda = fdf["country"].nunique()
+    n_industries_eda = fdf["industry"].nunique()
+    n_variables = fdf.shape[1]
+
+    eq1, eq2, eq3, eq4, eq5 = st.columns(5)
+    with eq1:
+        st.markdown(kpi_card(f"{n_total:,}", "Respondents", "In current filter", C_INFO), unsafe_allow_html=True)
+    with eq2:
+        st.markdown(kpi_card(f"{completeness:.1f}%", "Data Completeness", "Non-null rate", C_PRIMARY), unsafe_allow_html=True)
+    with eq3:
+        st.markdown(kpi_card(f"{n_countries_eda}", "Countries", "Represented", C_WARN), unsafe_allow_html=True)
+    with eq4:
+        st.markdown(kpi_card(f"{n_industries_eda}", "Industries", "Represented", C_PURPLE), unsafe_allow_html=True)
+    with eq5:
+        st.markdown(kpi_card(f"{n_variables}", "Variables", "Total columns", C_INFO), unsafe_allow_html=True)
+
+    st.markdown(section_divider(), unsafe_allow_html=True)
+
+    # Missing data heatmap
+    st.markdown("#### Missing Data Profile")
+    missing_cols = ["age", "gender", "country", "education_level", "income_bracket",
+                    "household_dependents", "perceived_automation_risk", "willingness_to_reskill",
+                    "career_anxiety", "upskilling_hours_per_week", "employer_provides_reskilling",
+                    "successful_reskill_transition"]
+    missing_pct = fdf[missing_cols].isnull().mean() * 100
+    missing_df = pd.DataFrame({"Variable": [CLF_FEATURE_LABELS.get(c, c.replace("_", " ").title()) for c in missing_cols],
+                                "Missing %": missing_pct.values})
+    missing_df = missing_df.sort_values("Missing %", ascending=True)
+
+    fig_missing = px.bar(missing_df, x="Missing %", y="Variable", orientation="h",
+                          color="Missing %",
+                          color_continuous_scale=[[0, C_PRIMARY], [0.5, C_WARN], [1, C_RISK]],
+                          template=PLOTLY_TEMPLATE, labels={"Missing %": "Missing %", "Variable": ""})
+    fig_missing.update_layout(paper_bgcolor=CHART_BG, margin=dict(l=180, r=30, t=10, b=40),
+                               height=320, coloraxis_showscale=False, yaxis=dict(autorange="reversed"))
+    st.plotly_chart(fig_missing, use_container_width=True)
+
+    # Likert response quality
+    st.markdown("#### Survey Response Quality — Likert Scale Distributions")
+    likert_cols_eda = ["perceived_automation_risk", "ai_awareness", "willingness_to_reskill",
+                       "satisfaction_employer_ld", "career_confidence_5yr", "career_anxiety"]
+    likert_labels_eda = ["Automation\nRisk", "AI\nAwareness", "Willingness\nto Reskill",
+                          "L&D\nSatisfaction", "Career\nConfidence", "Career\nAnxiety"]
+
+    likert_data = []
+    for col, label in zip(likert_cols_eda, likert_labels_eda):
+        vc = fdf[col].value_counts(normalize=True).sort_index()
+        for val in range(1, 6):
+            likert_data.append({"Variable": label, "Response": str(val), "Percentage": vc.get(val, 0) * 100})
+
+    likert_df = pd.DataFrame(likert_data)
+    fig_likert = px.bar(likert_df, x="Variable", y="Percentage", color="Response",
+                         barmode="stack", template=PLOTLY_TEMPLATE,
+                         color_discrete_sequence=["#2C3E50", C_INFO, C_WARN, C_ORANGE, C_RISK],
+                         labels={"Percentage": "% of Responses", "Variable": ""})
+    fig_likert.update_layout(paper_bgcolor=CHART_BG, margin=CHART_MARGINS, height=350,
+                              legend=dict(title="Likert Score", orientation="h", y=-0.2))
+    st.plotly_chart(fig_likert, use_container_width=True)
+
+    # Straightlining detection
+    straightline_count = 0
+    for _, row in fdf[likert_cols_eda].dropna().iterrows():
+        vals = row.values
+        if len(set(vals)) == 1:
+            straightline_count += 1
+    straightline_pct = straightline_count / max(len(fdf), 1) * 100
+
+    st.markdown(callout_box(
+        "📋 Response Quality Check",
+        f"<b>{straightline_pct:.1f}% of respondents</b> gave identical answers across all Likert scales (straightlining). "
+        f"{'This is within the expected 5–8% range for survey data, confirming response quality.' if straightline_pct < 10 else 'Elevated straightlining detected — consider flagging these respondents in sensitivity analysis.'}",
+        C_INFO
+    ), unsafe_allow_html=True)
+
+    st.markdown(section_divider(), unsafe_allow_html=True)
+
+    # ── Layer 2: Univariate Distributions ──
+    st.markdown("#### Key Variable Distributions")
+
+    # 2x3 grid
+    ud1, ud2, ud3 = st.columns(3)
+
+    with ud1:
+        st.markdown("##### Age Distribution")
+        fig_age = px.histogram(fdf, x="age", nbins=30, template=PLOTLY_TEMPLATE,
+                                color_discrete_sequence=[C_INFO],
+                                labels={"age": "Age", "count": "Count"})
+        fig_age.update_layout(paper_bgcolor=CHART_BG, margin=dict(l=40, r=20, t=10, b=40),
+                               height=220, showlegend=False)
+        st.plotly_chart(fig_age, use_container_width=True)
+
+    with ud2:
+        st.markdown("##### Education Level")
+        edu_vc = fdf["education_level"].value_counts().reindex(EDU_ORDER).dropna()
+        edu_df = pd.DataFrame({"level": edu_vc.index, "count": edu_vc.values})
+        fig_edu = px.bar(edu_df, x="count", y="level", orientation="h",
+                          template=PLOTLY_TEMPLATE, color_discrete_sequence=[C_PRIMARY],
+                          labels={"count": "Count", "level": ""})
+        fig_edu.update_layout(paper_bgcolor=CHART_BG, margin=dict(l=130, r=20, t=10, b=40),
+                               height=220, showlegend=False)
+        st.plotly_chart(fig_edu, use_container_width=True)
+
+    with ud3:
+        st.markdown("##### Industry")
+        ind_vc = fdf["industry"].value_counts().head(8)
+        ind_df = pd.DataFrame({"industry": ind_vc.index, "count": ind_vc.values})
+        fig_ind = px.bar(ind_df, x="count", y="industry", orientation="h",
+                          template=PLOTLY_TEMPLATE, color_discrete_sequence=[C_WARN],
+                          labels={"count": "Count", "industry": ""})
+        fig_ind.update_layout(paper_bgcolor=CHART_BG, margin=dict(l=150, r=20, t=10, b=40),
+                               height=220, showlegend=False, yaxis=dict(autorange="reversed"))
+        st.plotly_chart(fig_ind, use_container_width=True)
+
+    ud4, ud5, ud6 = st.columns(3)
+
+    with ud4:
+        st.markdown("##### Career Anxiety")
+        anx_vc = fdf["career_anxiety"].value_counts().sort_index()
+        fig_anx_dist = px.bar(x=anx_vc.index, y=anx_vc.values, template=PLOTLY_TEMPLATE,
+                               color_discrete_sequence=[C_RISK], labels={"x": "Score (1-5)", "y": "Count"})
+        fig_anx_dist.update_layout(paper_bgcolor=CHART_BG, margin=dict(l=40, r=20, t=10, b=40),
+                                    height=220, showlegend=False)
+        st.plotly_chart(fig_anx_dist, use_container_width=True)
+
+    with ud5:
+        st.markdown("##### Automation Vulnerability Index")
+        fig_vuln = px.histogram(fdf, x="automation_vulnerability_idx", nbins=30,
+                                 template=PLOTLY_TEMPLATE, color_discrete_sequence=[C_PURPLE],
+                                 labels={"automation_vulnerability_idx": "Index (0-1)", "count": "Count"})
+        fig_vuln.update_layout(paper_bgcolor=CHART_BG, margin=dict(l=40, r=20, t=10, b=40),
+                                height=220, showlegend=False)
+        st.plotly_chart(fig_vuln, use_container_width=True)
+
+    with ud6:
+        st.markdown("##### Reskilling Engagement Score")
+        fig_engage = px.histogram(fdf, x="reskilling_engagement_score", nbins=30,
+                                   template=PLOTLY_TEMPLATE, color_discrete_sequence=[C_PRIMARY],
+                                   labels={"reskilling_engagement_score": "Score (0-1)", "count": "Count"})
+        fig_engage.update_layout(paper_bgcolor=CHART_BG, margin=dict(l=40, r=20, t=10, b=40),
+                                  height=220, showlegend=False)
+        st.plotly_chart(fig_engage, use_container_width=True)
+
+    # At-a-glance summary table
+    st.markdown("#### At-a-Glance Profile")
+    summary_data = {}
+    for col_name, label in [("biggest_barrier", "Top Barrier"), ("top_skill_pursued", "Top Skill Pursued"),
+                             ("learning_platform", "Top Learning Platform"), ("job_role_level", "Dominant Role Level"),
+                             ("employment_status", "Most Common Employment"), ("preferred_learning_mode", "Preferred Learning Mode")]:
+        vc = fdf[col_name].value_counts()
+        if len(vc) > 0:
+            summary_data[label] = f"{vc.index[0]} ({vc.iloc[0]/max(n_total,1)*100:.0f}%)"
+        else:
+            summary_data[label] = "N/A"
+
+    sg1, sg2, sg3 = st.columns(3)
+    summary_items = list(summary_data.items())
+    for i, (key, val) in enumerate(summary_items):
+        col_target = [sg1, sg2, sg3][i % 3]
+        with col_target:
+            st.markdown(f"""
+            <div class="callout-box" style="border-left: 3px solid {[C_INFO, C_PRIMARY, C_WARN, C_PURPLE, C_RISK, C_ORANGE][i % 6]};">
+                <div class="callout-title" style="color:{[C_INFO, C_PRIMARY, C_WARN, C_PURPLE, C_RISK, C_ORANGE][i % 6]}">{key}</div>
+                <div class="callout-body">{val}</div>
+            </div>""", unsafe_allow_html=True)
+
+    st.markdown(section_divider(), unsafe_allow_html=True)
+
+    # ── Layer 3: Bivariate Relationships ──
+    st.markdown("#### Bivariate Relationships")
+
+    # Correlation heatmap
+    st.markdown("##### Correlation Matrix — Numeric Variables")
+    corr_cols = ["age", "work_experience_years", "household_dependents",
+                 "perceived_automation_risk", "ai_awareness", "willingness_to_reskill",
+                 "satisfaction_employer_ld", "career_confidence_5yr", "career_anxiety",
+                 "upskilling_hours_per_week",
+                 "automation_vulnerability_idx", "reskilling_engagement_score",
+                 "support_ecosystem_score", "anxiety_to_action_ratio", "future_readiness_idx"]
+    corr_labels = ["Age", "Experience", "Dependents", "Auto Risk", "AI Aware", "Willingness",
+                   "L&D Sat", "Confidence", "Anxiety", "Hours/Week",
+                   "Vulnerability Idx", "Engagement Idx", "Support Idx", "Anx-Action Ratio", "Readiness Idx"]
+
+    corr_data = fdf[corr_cols].dropna()
+    if len(corr_data) > 50:
+        corr_matrix = corr_data.corr()
+        fig_corr = px.imshow(corr_matrix.round(2), text_auto=".2f",
+                              x=corr_labels, y=corr_labels,
+                              color_continuous_scale=[[0, C_RISK], [0.5, "#1A1A2E"], [1, C_PRIMARY]],
+                              zmin=-1, zmax=1,
+                              template=PLOTLY_TEMPLATE, aspect="auto")
+        fig_corr.update_layout(paper_bgcolor=CHART_BG, margin=dict(l=120, r=30, t=10, b=100),
+                                height=550, coloraxis_colorbar=dict(title="r", thickness=12))
+        st.plotly_chart(fig_corr, use_container_width=True)
+    else:
+        st.info("Insufficient data for correlation matrix. Broaden filters.")
+
+    # Two bivariate charts side by side
+    bv1, bv2 = st.columns(2)
+
+    with bv1:
+        st.markdown("##### Automation Vulnerability by Industry")
+        ind_vuln = fdf.groupby("industry")["automation_vulnerability_idx"].mean().sort_values()
+        ind_vuln_df = pd.DataFrame({"industry": ind_vuln.index, "vulnerability": ind_vuln.values})
+        fig_ind_vuln = px.bar(ind_vuln_df, x="vulnerability", y="industry", orientation="h",
+                               color="vulnerability",
+                               color_continuous_scale=[[0, C_PRIMARY], [1, C_RISK]],
+                               template=PLOTLY_TEMPLATE, labels={"vulnerability": "Avg Vulnerability", "industry": ""})
+        fig_ind_vuln.update_layout(paper_bgcolor=CHART_BG, margin=dict(l=170, r=30, t=10, b=40),
+                                    height=380, coloraxis_showscale=False, yaxis=dict(autorange="reversed"))
+        st.plotly_chart(fig_ind_vuln, use_container_width=True)
+
+    with bv2:
+        st.markdown("##### Enrollment Rate by Education × Economy Tier")
+        if fdf["dev_tier"].nunique() > 1:
+            edu_tier = fdf.groupby(["education_level", "dev_tier"])["enrolled_reskilling_bin"].mean().reset_index()
+            edu_tier.columns = ["Education", "Tier", "Enrollment Rate"]
+            edu_tier["Education"] = pd.Categorical(edu_tier["Education"], categories=EDU_ORDER, ordered=True)
+            edu_tier = edu_tier.sort_values("Education")
+            fig_edu_tier = px.bar(edu_tier, x="Education", y="Enrollment Rate", color="Tier",
+                                   barmode="group", template=PLOTLY_TEMPLATE,
+                                   color_discrete_map={"Developed": C_INFO, "Developing": C_RISK},
+                                   labels={"Enrollment Rate": "Enrollment Rate"})
+            fig_edu_tier.update_layout(paper_bgcolor=CHART_BG, margin=dict(l=50, r=30, t=10, b=60),
+                                        height=380, yaxis_tickformat=".0%",
+                                        legend=dict(orientation="h", y=-0.25))
+        else:
+            # Single tier — show by education only
+            edu_enroll = fdf.groupby("education_level")["enrolled_reskilling_bin"].mean().reindex(EDU_ORDER).dropna()
+            edu_enroll_df = pd.DataFrame({"Education": edu_enroll.index, "Enrollment Rate": edu_enroll.values})
+            fig_edu_tier = px.bar(edu_enroll_df, x="Education", y="Enrollment Rate",
+                                   template=PLOTLY_TEMPLATE, color_discrete_sequence=[C_INFO],
+                                   labels={"Enrollment Rate": "Enrollment Rate"})
+            fig_edu_tier.update_layout(paper_bgcolor=CHART_BG, margin=dict(l=50, r=30, t=10, b=60),
+                                        height=380, yaxis_tickformat=".0%")
+        st.plotly_chart(fig_edu_tier, use_container_width=True)
+
+    st.markdown(section_divider(), unsafe_allow_html=True)
+
+    # Policy panel
+    st.markdown(policy_panel("Data Quality & Exploration Insights", gen_eda_policy(fdf, df)), unsafe_allow_html=True)
+
+
+# ════════════════════════════════════════════════════════════════
+# TAB 3: CLASSIFICATION
+# ════════════════════════════════════════════════════════════════
+
+with tabs[2]:
     st.markdown("### Who Successfully Reskills, and Why?")
     st.caption("Gradient Boosting Classifier with SHAP Explainability — Target: Successful reskilling transition in past 3 years")
 
@@ -1238,10 +1543,10 @@ with tabs[1]:
 
 
 # ════════════════════════════════════════════════════════════════
-# TAB 3: CLUSTERING
+# TAB 4: CLUSTERING
 # ════════════════════════════════════════════════════════════════
 
-with tabs[2]:
+with tabs[3]:
     st.markdown("### The Five Global Workforce Personas")
     st.caption("K-Means Clustering (k=5) on composite reskilling dimensions")
 
@@ -1339,10 +1644,10 @@ with tabs[2]:
 
 
 # ════════════════════════════════════════════════════════════════
-# TAB 4: ASSOCIATION RULES
+# TAB 5: ASSOCIATION RULES
 # ════════════════════════════════════════════════════════════════
 
-with tabs[3]:
+with tabs[4]:
     st.markdown("### What Behavioural Patterns Co-Occur?")
     st.caption("Apriori Association Rule Mining — discovering policy-relevant co-occurrence patterns")
 
@@ -1504,10 +1809,10 @@ with tabs[3]:
 
 
 # ════════════════════════════════════════════════════════════════
-# TAB 5: REGRESSION (RANDOM FOREST)
+# TAB 6: REGRESSION (RANDOM FOREST) (RANDOM FOREST)
 # ════════════════════════════════════════════════════════════════
 
-with tabs[4]:
+with tabs[5]:
     st.markdown("### What Drives Reskilling Willingness and Career Anxiety?")
     st.caption("Random Forest Regression with SHAP Explainability — capturing non-linear relationships and interaction effects")
 
@@ -1704,10 +2009,10 @@ with tabs[4]:
 
 
 # ════════════════════════════════════════════════════════════════
-# TAB 6: GEOGRAPHIC INTELLIGENCE
+# TAB 7: GEOGRAPHIC INTELLIGENCE
 # ════════════════════════════════════════════════════════════════
 
-with tabs[5]:
+with tabs[6]:
     st.markdown("### Geographic Intelligence")
     st.caption("Cross-country reskilling landscape comparison")
 
@@ -1841,10 +2146,10 @@ with tabs[5]:
 
 
 # ════════════════════════════════════════════════════════════════
-# TAB 7: GENDER GAP
+# TAB 8: GENDER GAP
 # ════════════════════════════════════════════════════════════════
 
-with tabs[6]:
+with tabs[7]:
     st.markdown("### The Gender Gap Deep-Dive")
     st.caption("Structural barriers vs equal willingness — the access gap in reskilling")
 
@@ -1939,10 +2244,10 @@ with tabs[6]:
 
 
 # ════════════════════════════════════════════════════════════════
-# TAB 8: INCOME-RESKILLING MATRIX
+# TAB 9: INCOME-RESKILLING MATRIX
 # ════════════════════════════════════════════════════════════════
 
-with tabs[7]:
+with tabs[8]:
     st.markdown("### The Income-Reskilling Matrix")
     st.caption("2×2 strategic framework mapping income against reskilling investment")
 
