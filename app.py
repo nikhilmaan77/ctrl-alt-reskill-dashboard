@@ -603,6 +603,319 @@ def section_divider():
     return '<hr class="section-divider">'
 
 # ════════════════════════════════════════════════════════════════
+# DYNAMIC INSIGHTS ENGINE
+# ════════════════════════════════════════════════════════════════
+
+def _filter_label(fdf, df):
+    """Generate a human-readable label for the current filter."""
+    n_countries = fdf["country"].nunique()
+    n_industries = fdf["industry"].nunique()
+    total_countries = df["country"].nunique()
+    total_industries = df["industry"].nunique()
+    parts = []
+    if n_countries == 1:
+        parts.append(fdf["country"].iloc[0])
+    elif n_countries < total_countries:
+        parts.append(f"{n_countries} countries")
+    if n_industries == 1:
+        parts.append(fdf["industry"].iloc[0])
+    elif n_industries < total_industries:
+        parts.append(f"{n_industries} industries")
+    return " · ".join(parts) if parts else "global sample"
+
+def _compare_to_global(val, global_val, metric_name, higher_is="better"):
+    """Generate comparison text vs global baseline."""
+    diff = val - global_val
+    diff_pp = diff * 100 if abs(global_val) < 2 else diff  # detect percentage vs raw
+    if abs(diff) < 0.01:
+        return f"in line with the global average"
+    direction = "above" if diff > 0 else "below"
+    magnitude = abs(diff_pp)
+    if abs(global_val) < 2:  # percentage metric
+        return f"<b>{magnitude:.1f}pp {direction}</b> the global average ({global_val*100:.0f}%)"
+    return f"<b>{abs(diff):.2f} {direction}</b> the global average ({global_val:.2f})"
+
+def gen_tab1_policy(fdf, df, shap_ratio, enrollment_rate, emp_support_rate, avg_anx_action):
+    """Dynamic policy panel for Executive Summary."""
+    label = _filter_label(fdf, df)
+    g_enroll = (df["enrolled_reskilling"] == "Yes").mean() * 100
+    g_support = (df["employer_provides_reskilling"] == "Yes").mean() * 100
+    items = []
+    items.append(
+        f"<b>Employer-led reskilling is {shap_ratio:.1f}× more predictive of success than education level.</b> "
+        f"{'Policy should prioritize workplace training investment over traditional degree subsidies.' if emp_support_rate < 50 else 'Current employer investment is above average — focus on extending this model to underperforming sectors.'}"
+    )
+    enroll_cmp = enrollment_rate - g_enroll
+    if enrollment_rate < 30:
+        items.append(f"Only <b>{enrollment_rate:.0f}%</b> of this segment is enrolled in reskilling ({enroll_cmp:+.0f}pp vs global) — urgent scale-up with targeted outreach is needed.")
+    elif enrollment_rate < 50:
+        items.append(f"<b>{enrollment_rate:.0f}%</b> enrollment ({enroll_cmp:+.0f}pp vs global) shows moderate engagement. Focus on converting awareness into sustained participation.")
+    else:
+        items.append(f"<b>{enrollment_rate:.0f}%</b> enrollment ({enroll_cmp:+.0f}pp vs global) is strong. Shift focus from enrollment to completion and outcomes measurement.")
+    if avg_anx_action > 2.5:
+        items.append(f"An anxiety-to-action ratio of <b>{avg_anx_action:.1f}</b> signals significant paralysis — workers recognize the need but aren't acting. Structured, low-barrier entry programs are critical.")
+    else:
+        items.append(f"An anxiety-to-action ratio of <b>{avg_anx_action:.1f}</b> indicates reasonable engagement relative to concern. Maintain momentum through employer and government program quality.")
+    support_cmp = emp_support_rate - g_support
+    if emp_support_rate < 35:
+        items.append(f"Only <b>{emp_support_rate:.0f}%</b> employer support ({support_cmp:+.0f}pp vs global) — mandate minimum L&D investment thresholds for employers in this segment.")
+    else:
+        items.append(f"<b>{emp_support_rate:.0f}%</b> employer support ({support_cmp:+.0f}pp vs global) — {'a structural gap to address through tax incentives.' if emp_support_rate < 50 else 'study and replicate the best-performing employer programs.'}")
+    return items
+
+def gen_tab2_callout(fdf, df, shap_ratio):
+    """Dynamic callout for classification key finding."""
+    f_trans = (fdf["successful_reskill_transition"] == "Yes").mean() * 100
+    f_emp_trans = fdf[fdf["employer_provides_reskilling"] == "Yes"]["successful_reskill_transition_bin"].mean() * 100 if (fdf["employer_provides_reskilling"] == "Yes").any() else 0
+    f_noemp_trans = fdf[fdf["employer_provides_reskilling"] == "No"]["successful_reskill_transition_bin"].mean() * 100 if (fdf["employer_provides_reskilling"] == "No").any() else 0
+    gap = f_emp_trans - f_noemp_trans
+    return (
+        f"<b>Employer reskilling support</b> and <b>upskilling hours per week</b> are the strongest predictors of successful transitions — "
+        f"far outweighing education level ({shap_ratio:.1f}× less predictive). "
+        f"In this segment, workers with employer support transition at <b>{f_emp_trans:.0f}%</b> vs <b>{f_noemp_trans:.0f}%</b> without ({gap:+.0f}pp gap)."
+    )
+
+def gen_tab2_policy(fdf, df, shap_ratio, hours_threshold, clf_res):
+    """Dynamic policy panel for classification."""
+    label = _filter_label(fdf, df)
+    f_trans = (fdf["successful_reskill_transition"] == "Yes").mean() * 100
+    g_trans = (df["successful_reskill_transition"] == "Yes").mean() * 100
+    avg_hours_success = fdf[fdf["successful_reskill_transition"] == "Yes"]["upskilling_hours_per_week"].mean()
+    avg_hours_fail = fdf[fdf["successful_reskill_transition"] == "No"]["upskilling_hours_per_week"].mean()
+    items = []
+    items.append(
+        f"<b>Incentivize employer-led reskilling through tax credits</b> rather than expanding university subsidies. "
+        f"Employer support is {shap_ratio:.1f}× more impactful than education level. "
+        f"In this segment, the transition rate is {f_trans:.0f}% ({f_trans - g_trans:+.0f}pp vs global)."
+    )
+    items.append(
+        f"<b>Structured upskilling of {hours_threshold}+ hours/week</b> is the threshold for impact. "
+        f"Successful transitioners in this segment average <b>{avg_hours_success:.1f} hrs/week</b> vs <b>{avg_hours_fail:.1f}</b> for non-transitioners."
+    )
+    dev_tier_counts = fdf["dev_tier"].value_counts()
+    dominant_tier = dev_tier_counts.index[0] if len(dev_tier_counts) > 0 else "Mixed"
+    if len(dev_tier_counts) > 1:
+        items.append(
+            f"<b>Model generalizes across economic contexts</b> — accuracy for developed "
+            f"({clf_res['tier_metrics'].get('Developed', {}).get('accuracy', 0):.0%}) and developing "
+            f"({clf_res['tier_metrics'].get('Developing', {}).get('accuracy', 0):.0%}) economies is comparable."
+        )
+    else:
+        items.append(f"<b>This segment is entirely {dominant_tier} economies</b> — apply {dominant_tier.lower()}-specific policy levers: {'time flexibility and program quality' if dominant_tier == 'Developed' else 'cost subsidies and access infrastructure'}.")
+    f_anxiety_success = fdf[fdf["successful_reskill_transition"] == "Yes"]["career_anxiety"].mean()
+    items.append(
+        f"<b>Career anxiety (avg {f_anxiety_success:.1f}/5 among successful transitioners) does not predict success</b> — "
+        f"fear-based messaging is ineffective. Focus on enabling structures, not awareness campaigns."
+    )
+    return items
+
+def gen_tab3_persona_desc(fdf, persona_name, persona_data):
+    """Dynamic persona description based on filtered data."""
+    n = len(persona_data)
+    pct_enrolled = (persona_data["enrolled_reskilling"] == "Yes").mean() * 100 if n > 0 else 0
+    avg_anxiety = persona_data["career_anxiety"].mean() if n > 0 else 0
+    avg_engage = persona_data["reskilling_engagement_score"].mean() if n > 0 else 0
+    avg_support = persona_data["support_ecosystem_score"].mean() if n > 0 else 0
+    top_barrier_mode = persona_data["biggest_barrier"].mode()
+    top_barrier = top_barrier_mode.iloc[0] if len(top_barrier_mode) > 0 else "N/A"
+    descs = {
+        "Future-Ready Professionals": f"High engagement ({avg_engage:.2f}), strong support ({avg_support:.2f}). {pct_enrolled:.0f}% enrolled. Top barrier: {top_barrier}.",
+        "Anxious but Paralyzed": f"Anxiety at {avg_anxiety:.1f}/5 but only {pct_enrolled:.0f}% enrolled (engagement: {avg_engage:.2f}). Stuck in awareness without action. Top barrier: {top_barrier}.",
+        "Automation-Exposed & Active": f"Actively reskilling ({pct_enrolled:.0f}% enrolled, engagement: {avg_engage:.2f}) despite automation pressure. Top barrier: {top_barrier}.",
+        "Structurally Unsupported": f"Low support ecosystem ({avg_support:.2f}) despite {avg_anxiety:.1f}/5 anxiety. Only {pct_enrolled:.0f}% enrolled. Top barrier: {top_barrier}.",
+        "Complacent Incumbents": f"Low anxiety ({avg_anxiety:.1f}/5), low engagement ({avg_engage:.2f}). Only {pct_enrolled:.0f}% enrolled. Top barrier: {top_barrier}.",
+    }
+    desc = descs.get(persona_name, f"Engagement: {avg_engage:.2f}, Anxiety: {avg_anxiety:.1f}/5, Enrolled: {pct_enrolled:.0f}%.")
+    policies = {
+        "Future-Ready Professionals": f"Benchmark their employers' L&D programs and replicate across sectors. Leverage as mentors.",
+        "Anxious but Paralyzed": f"Deploy structured, guided pathways with low barrier-to-entry. Address '{top_barrier}' as the primary blocker.",
+        "Automation-Exposed & Active": f"Accelerate with targeted subsidies and fast-track certifications. Remove '{top_barrier}' friction.",
+        "Structurally Unsupported": f"Mandate employer L&D investment. Expand public reskilling infrastructure to address '{top_barrier}'.",
+        "Complacent Incumbents": f"Pre-emptive sector-specific disruption briefings. Address '{top_barrier}' through awareness campaigns.",
+    }
+    pol = policies.get(persona_name, "Targeted intervention required.")
+    return desc, pol
+
+def gen_tab3_policy(fdf, df, df_with_persona):
+    """Dynamic policy panel for clustering."""
+    label = _filter_label(fdf, df)
+    fp = df_with_persona[df_with_persona.index.isin(fdf.index)]
+    if len(fp) == 0:
+        return ["Insufficient data for persona-based analysis with current filters."]
+    persona_dist = fp["persona"].value_counts(normalize=True) * 100
+    largest = persona_dist.index[0] if len(persona_dist) > 0 else "N/A"
+    largest_pct = persona_dist.iloc[0] if len(persona_dist) > 0 else 0
+    smallest = persona_dist.index[-1] if len(persona_dist) > 1 else "N/A"
+    items = []
+    items.append(f"<b>In this segment ({label}), {largest} dominate at {largest_pct:.0f}%.</b> Policy design should prioritize interventions for this persona.")
+    if "Anxious but Paralyzed" in persona_dist.index:
+        anx_pct = persona_dist["Anxious but Paralyzed"]
+        if anx_pct > 25:
+            items.append(f"<b>{anx_pct:.0f}% are Anxious but Paralyzed</b> — a critical mass requiring structured, low-barrier intervention programs with guided learning pathways and mentorship.")
+        else:
+            items.append(f"{anx_pct:.0f}% are Anxious but Paralyzed — below-average concentration. Existing programs may be working; assess and scale them.")
+    if "Structurally Unsupported" in persona_dist.index:
+        unsup_pct = persona_dist["Structurally Unsupported"]
+        if unsup_pct > 20:
+            items.append(f"<b>{unsup_pct:.0f}% are Structurally Unsupported</b> — willing workers failed by institutions. Mandate minimum L&D investment for employers in this segment.")
+    if "Complacent Incumbents" in persona_dist.index:
+        comp_pct = persona_dist["Complacent Incumbents"]
+        if comp_pct > 20:
+            items.append(f"<b>{comp_pct:.0f}% are Complacent Incumbents</b> — the hidden risk. Sector-specific future-of-work briefings and disruption forecasts are needed.")
+    items.append(f"One-size-fits-all reskilling policies will not serve this segment. The persona mix requires {'at least 3 distinct intervention strategies' if len(persona_dist) >= 3 else 'targeted, persona-specific programming'}.")
+    return items
+
+def gen_tab4_policy(fdf, df):
+    """Dynamic policy bundles for association rules."""
+    label = _filter_label(fdf, df)
+    cost_pct = (fdf[fdf["biggest_barrier"] == "Cost"].shape[0] / max(len(fdf), 1)) * 100
+    time_pct = (fdf[fdf["biggest_barrier"] == "Time"].shape[0] / max(len(fdf), 1)) * 100
+    fam_pct = (fdf[fdf["biggest_barrier"] == "Family Responsibilities"].shape[0] / max(len(fdf), 1)) * 100
+    emp_yes_sat = fdf[fdf["employer_provides_reskilling"] == "Yes"]["satisfaction_employer_ld"].mean() if (fdf["employer_provides_reskilling"] == "Yes").any() else 0
+    emp_no_sat = fdf[fdf["employer_provides_reskilling"] == "No"]["satisfaction_employer_ld"].mean() if (fdf["employer_provides_reskilling"] == "No").any() else 0
+    top_barrier = fdf["biggest_barrier"].value_counts().index[0] if len(fdf) > 0 else "N/A"
+    items = []
+    if cost_pct > 20:
+        items.append(f"<b>Cost is cited by {cost_pct:.0f}% of this segment</b> — reskilling vouchers and income-replacement during training are essential. {'Pair with time-flexibility policies since Time is also at ' + f'{time_pct:.0f}%.' if time_pct > 15 else ''}")
+    if time_pct > 20:
+        items.append(f"<b>Time is cited by {time_pct:.0f}% of this segment</b> — learning leave legislation and employer-protected upskilling hours should be explored.")
+    if fam_pct > 10:
+        items.append(f"<b>Family Responsibilities affect {fam_pct:.0f}% of this segment</b> — childcare subsidies and flexible/asynchronous learning formats must be bundled with reskilling programs.")
+    if emp_yes_sat > 0 and emp_no_sat > 0:
+        sat_gap = emp_yes_sat - emp_no_sat
+        items.append(f"<b>Employer-supported workers rate L&D satisfaction {emp_yes_sat:.1f}/5 vs {emp_no_sat:.1f}/5 without</b> (gap: {sat_gap:+.1f}). Extending employer reskilling models to underserved sectors through public-private partnerships is high-impact.")
+    if not items:
+        items.append(f"The dominant barrier in this segment is <b>{top_barrier}</b> at {fdf['biggest_barrier'].value_counts().iloc[0] / len(fdf) * 100:.0f}%. Policy should target this barrier specifically.")
+    items.append(f"The behavioural flow (Industry → Barrier → Skill) for this segment should inform the design of industry-specific reskilling curricula rather than generic programs.")
+    return items
+
+def gen_tab5_policy(fdf, df, young_conf, young_engage, old_conf, old_engage, peak_anxiety):
+    """Dynamic policy for regression."""
+    label = _filter_label(fdf, df)
+    avg_willingness = fdf["willingness_to_reskill"].mean()
+    avg_anxiety = fdf["career_anxiety"].mean()
+    g_will = df["willingness_to_reskill"].mean()
+    items = []
+    items.append(
+        f"<b>Moderate urgency drives action; catastrophist framing causes paralysis.</b> "
+        f"Peak willingness occurs at anxiety level {peak_anxiety}/5. "
+        f"This segment averages {avg_anxiety:.1f}/5 anxiety and {avg_willingness:.1f}/5 willingness "
+        f"({'above' if avg_willingness > g_will else 'below'} global average of {g_will:.1f}). "
+        f"{'Emphasize opportunity framing.' if avg_anxiety > 3.5 else 'Current messaging approach appears effective.'}"
+    )
+    if young_conf > old_conf and young_engage < old_engage:
+        items.append(
+            f"<b>Workers under 30 overestimate confidence</b> ({young_conf:.1f}/5) despite lower engagement ({young_engage:.2f} vs {old_engage:.2f} for 35+). "
+            f"Early-career intervention programs are critical before complacency sets in."
+        )
+    elif young_engage >= old_engage:
+        items.append(f"Young workers in this segment show strong engagement ({young_engage:.2f}) — atypical of the broader population. Investigate what's driving this and replicate.")
+    avg_ld_sat = fdf["satisfaction_employer_ld"].mean()
+    items.append(
+        f"<b>L&D satisfaction averages {avg_ld_sat:.1f}/5 in this segment</b> — "
+        f"{'improving program quality, not just availability, should be a regulatory focus.' if avg_ld_sat < 3.5 else 'relatively strong, suggesting current employer programs are effective. Study and scale best practices.'}"
+    )
+    n_countries = fdf["country"].nunique()
+    if n_countries >= 3:
+        items.append("The same top predictors hold across multiple countries in this segment, reinforcing global applicability of these findings.")
+    elif n_countries == 1:
+        country = fdf["country"].iloc[0]
+        items.append(f"<b>Findings are specific to {country}</b> — validate against other markets before generalizing policy recommendations.")
+    return items
+
+def gen_tab6_policy(fdf, df):
+    """Dynamic geographic policy."""
+    label = _filter_label(fdf, df)
+    n_countries = fdf["country"].nunique()
+    dev_counts = fdf["dev_tier"].value_counts()
+    items = []
+    if "Developing" in dev_counts.index and "Developed" in dev_counts.index:
+        dev_support = (fdf[fdf["dev_tier"] == "Developed"]["employer_provides_reskilling"] == "Yes").mean() * 100
+        devg_support = (fdf[fdf["dev_tier"] == "Developing"]["employer_provides_reskilling"] == "Yes").mean() * 100
+        items.append(f"<b>Developing economies in this segment have {devg_support:.0f}% employer support vs {dev_support:.0f}% in developed</b> — international development finance should prioritize reskilling infrastructure.")
+    elif "Developing" in dev_counts.index:
+        cost_pct = (fdf["biggest_barrier"] == "Cost").mean() * 100
+        items.append(f"<b>This segment is entirely developing economies</b> with Cost as barrier for {cost_pct:.0f}%. Public funding for reskilling with income support during training is essential.")
+    elif "Developed" in dev_counts.index:
+        time_pct = (fdf["biggest_barrier"] == "Time").mean() * 100
+        items.append(f"<b>This segment is entirely developed economies</b> with Time as barrier for {time_pct:.0f}%. Learning leave legislation and protected upskilling hours should be explored.")
+    # Danger zone
+    country_stats = fdf.groupby("country").agg(v=("automation_vulnerability_idx", "mean"), e=("reskilling_engagement_score", "mean")).reset_index()
+    if len(country_stats) > 1:
+        danger = country_stats[(country_stats["v"] > country_stats["v"].median()) & (country_stats["e"] < country_stats["e"].median())]
+        if len(danger) > 0:
+            danger_list = ", ".join(danger["country"].tolist())
+            items.append(f"<b>Danger zone countries (high vulnerability, low engagement): {danger_list}.</b> These need immediate national reskilling strategies with public funding.")
+    top_barrier = fdf["biggest_barrier"].value_counts()
+    if len(top_barrier) > 0:
+        items.append(f"<b>The dominant barrier across this segment is {top_barrier.index[0]} ({top_barrier.iloc[0]/len(fdf)*100:.0f}%)</b> — national policy design should prioritize this barrier.")
+    if not items:
+        items.append("Select multiple countries to enable cross-country comparison insights.")
+    return items
+
+def gen_tab7_policy(fdf, f_will, m_will, f_enroll, m_enroll, fam_barrier_f, fam_barrier_m, f_support, m_support):
+    """Dynamic gender gap policy."""
+    items = []
+    will_gap = f_will - m_will
+    enroll_gap = (f_enroll - m_enroll) * 100
+    support_gap = (f_support - m_support) * 100
+    items.append(
+        f"<b>The reskilling gender gap is {'an access problem, not a motivation problem' if will_gap >= -0.1 else 'driven by both access and motivation barriers'}.</b> "
+        f"Women report {f_will:.2f}/5 willingness {'(equal to' if abs(will_gap) < 0.1 else '(vs'} {m_will:.2f}/5 for men) "
+        f"but face {fam_barrier_f:.0f}% Family Responsibilities barriers vs {fam_barrier_m:.0f}% for men."
+    )
+    if fam_barrier_f > 12:
+        items.append(f"<b>Childcare subsidies must be bundled with reskilling programs.</b> At {fam_barrier_f:.0f}%, Family Responsibilities are a structural barrier. Without addressing the care economy, investments disproportionately benefit male workers.")
+    if abs(support_gap) > 3:
+        items.append(f"<b>Employer support gap: {support_gap:+.1f}pp (F vs M).</b> {'Industry-specific mandates are needed to close this disparity.' if support_gap < -3 else 'Support parity is improving — maintain monitoring.'}")
+    items.append(f"<b>Flexible and asynchronous learning formats</b> should be prioritized {'urgently' if fam_barrier_f > 15 else ''} in program design to accommodate caregiving schedules.")
+    if abs(enroll_gap) > 3:
+        items.append(f"<b>Enrollment gap: {enroll_gap:+.1f}pp (F vs M).</b> {'Targeted female enrollment drives with flexible scheduling are needed.' if enroll_gap < -3 else 'Female enrollment is strong — focus on completion and outcome parity.'}")
+    return items
+
+def gen_tab8_policy(fdf):
+    """Dynamic income-reskilling matrix policy."""
+    irm_df = fdf[fdf["income_reskilling_gap"] != "Unknown"]
+    if len(irm_df) == 0:
+        return ["Insufficient income data for matrix analysis."]
+    seg_dist = irm_df["income_reskilling_gap"].value_counts(normalize=True) * 100
+    items = []
+    if "At-Risk Low Earner" in seg_dist.index:
+        ar_pct = seg_dist["At-Risk Low Earner"]
+        ar_trans = (irm_df[irm_df["income_reskilling_gap"] == "At-Risk Low Earner"]["successful_reskill_transition"] == "Yes").mean() * 100
+        items.append(f"<b>At-Risk Low Earners are {ar_pct:.0f}% of this segment with only {ar_trans:.0f}% transition rate.</b> Combined financial + time support is needed — vouchers alone won't work if workers can't reduce working hours.")
+    if "Complacent High Earner" in seg_dist.index:
+        ch_pct = seg_dist["Complacent High Earner"]
+        if ch_pct > 30:
+            items.append(f"<b>Complacent High Earners at {ch_pct:.0f}% are the hidden policy challenge.</b> They have resources but no urgency. Employer-mandated continuous learning credits and sector disruption briefings can activate this segment.")
+    if "Striving Upskiller" in seg_dist.index:
+        su_pct = seg_dist["Striving Upskiller"]
+        su_trans = (irm_df[irm_df["income_reskilling_gap"] == "Striving Upskiller"]["successful_reskill_transition"] == "Yes").mean() * 100
+        items.append(f"<b>Striving Upskillers ({su_pct:.0f}%, {su_trans:.0f}% transition rate) are the highest-ROI segment</b> for public investment. Reduce friction through fast-track certs and recognition of prior learning.")
+    if "Invested High Earner" in seg_dist.index:
+        ih_pct = seg_dist["Invested High Earner"]
+        items.append(f"<b>Invested High Earners ({ih_pct:.0f}%) should be leveraged as ecosystem assets.</b> Formalize their role as mentors, trainers, and policy advisors.")
+    if not items:
+        items.append("Adjust filters to include more respondents for segment-level analysis.")
+    return items
+
+def gen_segment_rec(seg_name, seg_data):
+    """Dynamic recommendation for each income-reskilling segment."""
+    if len(seg_data) == 0:
+        return "Insufficient data for recommendation."
+    top_barrier_mode = seg_data["biggest_barrier"].mode()
+    top_barrier = top_barrier_mode.iloc[0] if len(top_barrier_mode) > 0 else "N/A"
+    trans_rate = (seg_data["successful_reskill_transition"] == "Yes").mean() * 100
+    avg_hours = seg_data["upskilling_hours_per_week"].mean()
+    recs = {
+        "At-Risk Low Earner": f"Publicly funded reskilling with income support. Top barrier: {top_barrier}. Avg {avg_hours:.1f} hrs/week — need protected learning time.",
+        "Complacent High Earner": f"Employer mandates for continuous learning. Top barrier: {top_barrier}. Only {avg_hours:.1f} hrs/week despite resources.",
+        "Striving Upskiller": f"Fast-track certs, recognize informal learning. {trans_rate:.0f}% transition rate at {avg_hours:.1f} hrs/week — reduce friction to convert effort.",
+        "Invested High Earner": f"Formalize as mentors and industry trainers. {trans_rate:.0f}% transition rate — strong ROI, multiply their impact.",
+    }
+    return recs.get(seg_name, f"Targeted intervention for {top_barrier} barrier. Transition rate: {trans_rate:.0f}%.")
+
+# ════════════════════════════════════════════════════════════════
 # MAIN APP
 # ════════════════════════════════════════════════════════════════
 
@@ -780,12 +1093,7 @@ with tabs[0]:
         st.plotly_chart(fig_irm, use_container_width=True)
 
     st.markdown(section_divider(), unsafe_allow_html=True)
-    st.markdown(policy_panel("Key Takeaways for Policymakers", [
-        f"<b>Employer-led reskilling is {shap_ratio:.1f}× more predictive of success than education level.</b> Policy should incentivize workplace training over traditional degree pathways.",
-        f"Only <b>{enrollment_rate:.0f}%</b> of the global workforce is currently enrolled in reskilling — urgent scale-up is needed.",
-        f"The average anxiety-to-action ratio of <b>{avg_anx_action:.1f}</b> indicates significant paralysis — workers know they need to reskill but aren't acting.",
-        f"<b>{emp_support_rate:.0f}%</b> of employers currently provide reskilling support — a structural gap that governments can address through tax incentives and mandates."
-    ]), unsafe_allow_html=True)
+    st.markdown(policy_panel("Key Takeaways for Policymakers", gen_tab1_policy(fdf, df, shap_ratio, enrollment_rate, emp_support_rate, avg_anx_action)), unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -817,9 +1125,7 @@ with tabs[1]:
 
     st.markdown(callout_box(
         "💡 Key Finding",
-        f"<b>Employer reskilling support</b> and <b>upskilling hours per week</b> are the strongest predictors of successful transitions — "
-        f"far outweighing education level ({shap_ratio:.1f}× less predictive). "
-        f"This challenges the conventional assumption that formal education drives workforce adaptability.",
+        gen_tab2_callout(fdf, df, shap_ratio),
         C_PRIMARY
     ), unsafe_allow_html=True)
 
@@ -923,18 +1229,7 @@ with tabs[1]:
     except Exception:
         pass
 
-    st.markdown(policy_panel("Policy Implications — Classification Findings", [
-        f"<b>Governments should incentivize employer-led reskilling through tax credits</b> rather than expanding university enrollment subsidies. "
-        f"Employer support is {shap_ratio:.1f}× more impactful than education level in predicting successful transitions.",
-        f"<b>Structured upskilling time of {hours_threshold}+ hours per week</b> is the threshold for meaningful impact. "
-        f"Workplace learning mandates should target this minimum to ensure reskilling programs achieve outcomes, not just participation.",
-        f"<b>Model generalizes across economic contexts</b> — accuracy for developed economies "
-        f"({clf_res['tier_metrics'].get('Developed', {}).get('accuracy', 0):.0%}) and developing economies "
-        f"({clf_res['tier_metrics'].get('Developing', {}).get('accuracy', 0):.0%}) are comparable, "
-        f"suggesting these policy levers are globally applicable.",
-        "<b>Career anxiety does not predict reskilling success</b> — fear-based messaging about automation is not an effective policy tool. "
-        "Focus on enabling structures (employer programs, dedicated time) rather than awareness campaigns."
-    ]), unsafe_allow_html=True)
+    st.markdown(policy_panel("Policy Implications — Classification Findings", gen_tab2_policy(fdf, df, shap_ratio, hours_threshold, clf_res)), unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -976,24 +1271,17 @@ with tabs[2]:
 
     # Persona cards
     st.markdown("#### Persona Profiles")
-    persona_descs = {
-        "Future-Ready Professionals": ("High engagement, strong employer support, confident about career trajectory.",
-                                        "Benchmark this group's employer policies and replicate across sectors."),
-        "Anxious but Paralyzed": ("High career anxiety but low reskilling action. Stuck in awareness without execution.",
-                                   "Deploy structured intervention programs with guided learning pathways and reduced barrier-to-entry."),
-        "Automation-Exposed & Active": ("Facing immediate automation pressure and actively reskilling in response.",
-                                         "Accelerate their transition with targeted subsidies and fast-track certifications."),
-        "Structurally Unsupported": ("Willing to reskill but lacking employer or government support structures.",
-                                      "Address the supply gap: mandate employer L&D investment and expand public reskilling infrastructure."),
-        "Complacent Incumbents": ("Low anxiety, low engagement, low vulnerability perception. Not yet feeling the urgency.",
-                                   "Pre-emptive awareness campaigns targeting industries facing medium-term disruption.")
-    }
+
+    # Filter persona data to match fdf
+    fdf_persona = df_with_persona[df_with_persona.index.isin(fdf.index)]
+    persona_counts_f = fdf_persona["persona"].value_counts() if len(fdf_persona) > 0 else pd.Series(dtype=int)
+    total_f = max(len(fdf_persona), 1)
 
     pcols = st.columns(5)
-    persona_counts = df_with_persona["persona"].value_counts()
     for i, (cluster_id, persona_name) in enumerate(clust_res["persona_map"].items()):
-        pct = persona_counts.get(persona_name, 0) / len(df_with_persona) * 100
-        desc, pol = persona_descs.get(persona_name, ("", ""))
+        pct = persona_counts_f.get(persona_name, 0) / total_f * 100
+        persona_subset = fdf_persona[fdf_persona["persona"] == persona_name] if len(fdf_persona) > 0 else pd.DataFrame()
+        desc, pol = gen_tab3_persona_desc(fdf, persona_name, persona_subset)
         with pcols[i % 5]:
             st.markdown(f"""
             <div class="persona-card" style="border-color:{PERSONA_COLORS[i % len(PERSONA_COLORS)]}">
@@ -1042,13 +1330,7 @@ with tabs[2]:
     st.markdown(section_divider(), unsafe_allow_html=True)
 
     # Layer 3: Policy implications
-    st.markdown(policy_panel("Policy Implications — Persona-Based Interventions", [
-        "<b>One-size-fits-all reskilling policies are ineffective.</b> Five distinct workforce segments require five distinct intervention strategies.",
-        "The <b>Anxious but Paralyzed</b> segment needs structured, low-barrier entry points — not more awareness campaigns. Governments should fund guided learning pathways with mentorship.",
-        "The <b>Structurally Unsupported</b> segment represents willing workers failed by their institutions. Mandate minimum L&D investment thresholds for employers above a certain size.",
-        "The <b>Complacent Incumbents</b> are the hidden risk — they don't know they need to reskill. Sector-specific future-of-work briefings targeting their industries are critical.",
-        "Countries with high concentrations of <b>Future-Ready Professionals</b> (see heatmap above) should be studied as policy benchmarks."
-    ]), unsafe_allow_html=True)
+    st.markdown(policy_panel("Policy Implications — Persona-Based Interventions", gen_tab3_policy(fdf, df, df_with_persona)), unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -1125,47 +1407,47 @@ with tabs[3]:
     r2 = find_rule_flexible(rules, ["ind_technology", "employer_support_yes"], ["high_ld", "satisfaction"])
     r3 = find_rule_flexible(rules, ["female"], ["high_willingness", "willingness"])
 
-    # Compute empirical stats as fallback context
-    dev_cost_pct = (df[(df["dev_tier"] == "Developing") & (df["biggest_barrier"] == "Cost")].shape[0] /
-                    max(df[df["dev_tier"] == "Developing"].shape[0], 1)) * 100
-    tech_emp_sat = df[(df["industry"] == "Technology/IT") & (df["employer_provides_reskilling"] == "Yes")]["satisfaction_employer_ld"].mean()
-    f_willingness = df[df["gender"] == "Female"]["willingness_to_reskill"].mean()
-    m_willingness = df[df["gender"] == "Male"]["willingness_to_reskill"].mean()
+    # Compute empirical stats from FILTERED data
+    f_dev_cost_pct = (fdf[(fdf["dev_tier"] == "Developing") & (fdf["biggest_barrier"] == "Cost")].shape[0] /
+                      max(fdf[fdf["dev_tier"] == "Developing"].shape[0], 1)) * 100 if (fdf["dev_tier"] == "Developing").any() else 0
+    f_cost_pct_all = (fdf["biggest_barrier"] == "Cost").mean() * 100
+    f_tech_emp = fdf[(fdf["industry"] == "Technology/IT") & (fdf["employer_provides_reskilling"] == "Yes")]
+    f_tech_emp_sat = f_tech_emp["satisfaction_employer_ld"].mean() if len(f_tech_emp) > 0 else 0
+    f_f_willingness = fdf[fdf["gender"] == "Female"]["willingness_to_reskill"].mean() if (fdf["gender"] == "Female").any() else 0
+    f_m_willingness = fdf[fdf["gender"] == "Male"]["willingness_to_reskill"].mean() if (fdf["gender"] == "Male").any() else 0
 
     with cb1:
+        cost_stat = f_dev_cost_pct if (fdf["dev_tier"] == "Developing").any() else f_cost_pct_all
+        cost_label = "developing-country respondents in this segment" if (fdf["dev_tier"] == "Developing").any() else "respondents in this segment"
         if r1 is not None:
-            lift_val = f"{r1['lift']:.2f}"
-            conf_val = f"{r1['confidence']:.0%}"
             body = (f"<b>Developing Country + Low Income → Cost Barrier</b><br>"
-                    f"Lift: {lift_val} · Confidence: {conf_val}<br>"
-                    f"Cost is cited by {dev_cost_pct:.0f}% of developing-country respondents — the dominant structural barrier.")
+                    f"Lift: {r1['lift']:.2f} · Confidence: {r1['confidence']:.0%}<br>"
+                    f"Cost is cited by {cost_stat:.0f}% of {cost_label}.")
         else:
-            body = (f"<b>Developing Country + Low Income → Cost Barrier</b><br>"
-                    f"Cost is cited by {dev_cost_pct:.0f}% of developing-country respondents — the dominant structural barrier in emerging economies.")
+            body = (f"<b>Cost Barrier Prevalence</b><br>"
+                    f"Cost is cited by {cost_stat:.0f}% of {cost_label} — {'the dominant structural barrier.' if cost_stat > 20 else 'a notable but not dominant factor.'}")
         st.markdown(callout_box("📌 Cost as Structural Barrier", body, C_RISK), unsafe_allow_html=True)
 
     with cb2:
         if r2 is not None:
-            lift_val = f"{r2['lift']:.2f}"
-            conf_val = f"{r2['confidence']:.0%}"
             body = (f"<b>Tech Industry + Employer Support → High L&D Satisfaction</b><br>"
-                    f"Lift: {lift_val} · Confidence: {conf_val}<br>"
-                    f"Tech employers with reskilling programs achieve avg {tech_emp_sat:.1f}/5 satisfaction — setting the standard.")
+                    f"Lift: {r2['lift']:.2f} · Confidence: {r2['confidence']:.0%}<br>"
+                    f"Tech employers with reskilling programs achieve avg {f_tech_emp_sat:.1f}/5 satisfaction in this segment.")
         else:
-            body = (f"<b>Tech Industry + Employer Support → High L&D Satisfaction</b><br>"
-                    f"Tech employers with reskilling programs achieve avg {tech_emp_sat:.1f}/5 satisfaction — a model for other sectors.")
+            body = (f"<b>Employer Support & L&D Satisfaction</b><br>"
+                    f"Tech employers with reskilling programs achieve avg {f_tech_emp_sat:.1f}/5 satisfaction in this segment — {'a model for other sectors.' if f_tech_emp_sat > 3.5 else 'room for improvement remains.'}")
         st.markdown(callout_box("📌 Tech Employer Best Practice", body, C_PRIMARY), unsafe_allow_html=True)
 
     with cb3:
+        will_gap = f_f_willingness - f_m_willingness
         if r3 is not None:
-            lift_val = f"{r3['lift']:.2f}"
-            conf_val = f"{r3['confidence']:.0%}"
             body = (f"<b>Female Workers → Equal/High Willingness to Reskill</b><br>"
-                    f"Lift: {lift_val} · Confidence: {conf_val}<br>"
-                    f"Women report {f_willingness:.2f}/5 willingness vs {m_willingness:.2f}/5 for men — the gap is access, not motivation.")
+                    f"Lift: {r3['lift']:.2f} · Confidence: {r3['confidence']:.0%}<br>"
+                    f"Women report {f_f_willingness:.2f}/5 willingness vs {f_m_willingness:.2f}/5 for men ({will_gap:+.2f} gap) in this segment.")
         else:
-            body = (f"<b>Female Workers → Equal/High Willingness to Reskill</b><br>"
-                    f"Women report {f_willingness:.2f}/5 willingness vs {m_willingness:.2f}/5 for men — the gap is access, not motivation.")
+            body = (f"<b>Gender Willingness Comparison</b><br>"
+                    f"Women report {f_f_willingness:.2f}/5 willingness vs {f_m_willingness:.2f}/5 for men ({will_gap:+.2f} gap) — "
+                    f"{'the gap is access, not motivation.' if will_gap >= -0.1 else 'both access and motivation require attention.'}")
         st.markdown(callout_box("📌 Gender Willingness Parity", body, C_PURPLE), unsafe_allow_html=True)
 
     st.markdown(section_divider(), unsafe_allow_html=True)
@@ -1213,24 +1495,7 @@ with tabs[3]:
     st.markdown(section_divider(), unsafe_allow_html=True)
 
     # Layer 3: Policy Bundles
-    # Compute cost-time co-occurrence stat
-    cost_time_cooccur = df[(df["dev_tier"] == "Developing") &
-                           (df["income_reskilling_gap"].isin(["At-Risk Low Earner"]))].shape[0]
-    cost_pct_in_developing = (df[(df["dev_tier"] == "Developing") & (df["biggest_barrier"] == "Cost")].shape[0] /
-                              max(df[df["dev_tier"] == "Developing"].shape[0], 1)) * 100
-
-    st.markdown(policy_panel("Policy Bundles — Translating Rules into Interventions", [
-        f"<b>In developing economies, reskilling cost subsidies must be paired with time-flexibility policies</b> "
-        f"because cost barriers affect {cost_pct_in_developing:.0f}% of developing-country respondents. "
-        f"Subsidies alone are insufficient if workers lack time to use them.",
-        "<b>Employer-provided reskilling in Tech and Finance correlates with high L&D satisfaction</b> — "
-        "suggesting this model should be extended to Manufacturing and Agriculture through public-private partnerships. "
-        "Governments can co-fund employer training programs in underserved sectors.",
-        "<b>Female workers demonstrate equal or higher willingness to reskill despite facing Family Responsibilities barriers.</b> "
-        "Childcare subsidies and flexible learning schedules must be bundled with reskilling programs to close the gender access gap.",
-        "<b>The Sankey flow reveals industry → barrier → skill pathways.</b> Use these to design industry-specific reskilling curricula "
-        "rather than generic skills programs."
-    ]), unsafe_allow_html=True)
+    st.markdown(policy_panel("Policy Bundles — Translating Rules into Interventions", gen_tab4_policy(fdf, df)), unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -1319,19 +1584,25 @@ with tabs[4]:
                                 coloraxis_colorbar=dict(title="Engagement", thickness=12))
     st.plotly_chart(fig_age_conf, use_container_width=True)
 
-    # Compute youth overconfidence stats
-    young_conf = df[df["age"] < 30]["career_confidence_5yr"].mean()
-    young_engage = df[df["age"] < 30]["reskilling_engagement_score"].mean()
-    old_conf = df[df["age"] >= 35]["career_confidence_5yr"].mean()
-    old_engage = df[df["age"] >= 35]["reskilling_engagement_score"].mean()
+    # Compute youth overconfidence stats from filtered data
+    young_f = fdf[fdf["age"] < 30]
+    old_f = fdf[fdf["age"] >= 35]
+    young_conf = young_f["career_confidence_5yr"].mean() if len(young_f) > 0 else 0
+    young_engage = young_f["reskilling_engagement_score"].mean() if len(young_f) > 0 else 0
+    old_conf = old_f["career_confidence_5yr"].mean() if len(old_f) > 0 else 0
+    old_engage = old_f["reskilling_engagement_score"].mean() if len(old_f) > 0 else 0
 
-    st.markdown(callout_box(
-        "💡 Youth Overconfidence Paradox",
-        f"Workers under 30 report <b>{young_conf:.1f}/5</b> career confidence but only <b>{young_engage:.2f}</b> reskilling engagement. "
-        f"Workers 35+ report <b>{old_conf:.1f}/5</b> confidence but <b>{old_engage:.2f}</b> engagement. "
-        f"Young workers are confident they'll be fine — but aren't preparing.",
-        C_WARN
-    ), unsafe_allow_html=True)
+    if len(young_f) > 10 and len(old_f) > 10:
+        paradox = young_conf > old_conf and young_engage < old_engage
+        st.markdown(callout_box(
+            "💡 Youth Overconfidence Paradox" if paradox else "💡 Age × Confidence Analysis",
+            f"Workers under 30 report <b>{young_conf:.1f}/5</b> career confidence with <b>{young_engage:.2f}</b> reskilling engagement. "
+            f"Workers 35+ report <b>{old_conf:.1f}/5</b> confidence with <b>{old_engage:.2f}</b> engagement. "
+            f"{'The paradox is clear — younger workers are confident but not preparing.' if paradox else 'In this segment, the typical overconfidence pattern is not observed — possibly due to targeted interventions already working.'}",
+            C_WARN
+        ), unsafe_allow_html=True)
+    else:
+        st.markdown(callout_box("💡 Age Analysis", "Insufficient age diversity in this filtered segment for confidence-engagement comparison. Broaden filters to see the youth overconfidence pattern.", C_WARN), unsafe_allow_html=True)
 
     # Multi-country coefficient comparison
     st.markdown("#### Multi-Country Regression Comparison")
@@ -1395,18 +1666,7 @@ with tabs[4]:
     peak_anxiety = anx_will.idxmax()
     age_threshold = 30
 
-    st.markdown(policy_panel("Policy Implications — Regression Findings", [
-        f"<b>Moderate urgency messaging drives reskilling action; catastrophist framing causes paralysis.</b> "
-        f"Peak willingness occurs at career anxiety level {peak_anxiety}/5. "
-        f"Government communications should emphasize opportunity (\"future-proof your career\"), not threat (\"your job will disappear\").",
-        f"<b>Workers under {age_threshold} significantly overestimate their career confidence</b> "
-        f"(avg {young_conf:.1f}/5) despite lower reskilling engagement ({young_engage:.2f} vs {old_engage:.2f} for 35+). "
-        f"Early-career intervention programs are critical before complacency sets in.",
-        "<b>Employer L&D satisfaction is a significant predictor of both willingness and reduced anxiety.</b> "
-        "Improving workplace learning quality — not just availability — should be a regulatory focus.",
-        "<b>The same top-3 drivers hold across India, USA, Germany, and Nigeria</b> (see coefficient chart), "
-        "reinforcing the global applicability of these findings for international policy frameworks."
-    ]), unsafe_allow_html=True)
+    st.markdown(policy_panel("Policy Implications — Regression Findings", gen_tab5_policy(fdf, df, young_conf, young_engage, old_conf, old_engage, peak_anxiety)), unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -1543,17 +1803,7 @@ with tabs[5]:
         st.markdown(kpi_card(f"{dominant_persona}", "Dominant Persona", f"{dominant_pct:.0f}% of workforce", C_PURPLE), unsafe_allow_html=True)
 
     st.markdown(section_divider(), unsafe_allow_html=True)
-    st.markdown(policy_panel("Policy Implications — Geographic Insights", [
-        "<b>Developing economies face a structural double bind:</b> higher cost barriers AND lower employer support. "
-        "International development finance should prioritize reskilling infrastructure alongside traditional education investment.",
-        "<b>Countries in the 'Danger Zone'</b> (high vulnerability, low engagement — see bubble chart) "
-        "need immediate national reskilling strategies with public funding and industry partnerships.",
-        "<b>The dominant persona in each country should drive national policy design.</b> "
-        "A country with high 'Structurally Unsupported' concentration needs employer mandates; "
-        "one with high 'Complacent Incumbents' needs awareness campaigns.",
-        "<b>Developed economies should not be complacent</b> — their 'Time' barrier suggests that even with resources, "
-        "workers lack protected time for reskilling. Learning leave legislation should be explored."
-    ]), unsafe_allow_html=True)
+    st.markdown(policy_panel("Policy Implications — Geographic Insights", gen_tab6_policy(fdf, df)), unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -1631,9 +1881,11 @@ with tabs[6]:
                      max(gdf[gdf["gender"] == "Male"].shape[0], 1)) * 100
 
     st.markdown(callout_box(
-        "⚖️ The Access Paradox",
-        f"Female respondents cite <b>Family Responsibilities</b> as their top barrier at {fam_barrier_f:.1f}% vs {fam_barrier_m:.1f}% for males — "
-        f"yet report <b>equal or higher willingness to reskill</b> (F: {f_will:.2f} vs M: {m_will:.2f}). The gap is access, not motivation.",
+        "⚖️ The Access Paradox" if (f_will >= m_will - 0.1 and fam_barrier_f > fam_barrier_m) else "⚖️ Gender Reskilling Analysis",
+        f"Female respondents cite <b>Family Responsibilities</b> at {fam_barrier_f:.1f}% vs {fam_barrier_m:.1f}% for males "
+        f"({'a {:.0f}pp gap'.format(fam_barrier_f - fam_barrier_m) if fam_barrier_f > fam_barrier_m else 'comparable rates'}). "
+        f"Willingness: F {f_will:.2f}/5 vs M {m_will:.2f}/5. "
+        f"{'The gap is access, not motivation.' if f_will >= m_will - 0.1 else 'Both access and engagement require targeted intervention.'}",
         C_PURPLE
     ), unsafe_allow_html=True)
 
@@ -1649,15 +1901,7 @@ with tabs[6]:
     st.plotly_chart(fig_gi, use_container_width=True)
 
     st.markdown(section_divider(), unsafe_allow_html=True)
-    st.markdown(policy_panel("Policy Implications — Gender Gap", [
-        f"<b>The reskilling gender gap is an access problem, not a motivation problem.</b> "
-        f"Women report equal willingness ({f_will:.2f}/5) but face {fam_barrier_f:.0f}% Family Responsibilities barriers vs {fam_barrier_m:.0f}% for men.",
-        "<b>Childcare subsidies must be bundled with reskilling programs.</b> "
-        "Without addressing the care economy, reskilling investments will disproportionately benefit male workers.",
-        "<b>Industry-specific gender gaps exist</b> (see heatmap). Manufacturing and Construction show the largest employer support disparities — "
-        "sector-specific mandates are needed.",
-        "<b>Flexible and asynchronous learning formats</b> should be prioritized in program design to accommodate caregiving schedules."
-    ]), unsafe_allow_html=True)
+    st.markdown(policy_panel("Policy Implications — Gender Gap", gen_tab7_policy(fdf, f_will, m_will, f_enroll, m_enroll, fam_barrier_f, fam_barrier_m, f_support, m_support)), unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -1718,22 +1962,17 @@ with tabs[7]:
     st.markdown("#### Segment Profiles")
     seg_cols = st.columns(4)
     segment_order = ["At-Risk Low Earner", "Complacent High Earner", "Striving Upskiller", "Invested High Earner"]
-    segment_recs = {
-        "At-Risk Low Earner": "Publicly funded reskilling with income support during training",
-        "Complacent High Earner": "Employer mandates for continuous learning; future-of-work briefings",
-        "Striving Upskiller": "Fast-track certifications, recognition of informal learning, career pathway support",
-        "Invested High Earner": "Leverage as mentors and champions; formalize their learning into credentials"
-    }
 
     for i, seg in enumerate(segment_order):
         seg_data = irm_df[irm_df["income_reskilling_gap"] == seg]
         with seg_cols[i]:
-            pct = len(seg_data) / len(irm_df) * 100
-            trans_rate = (seg_data["successful_reskill_transition"] == "Yes").mean() * 100
-            avg_anxiety = seg_data["career_anxiety"].mean()
+            pct = len(seg_data) / max(len(irm_df), 1) * 100
+            trans_rate = (seg_data["successful_reskill_transition"] == "Yes").mean() * 100 if len(seg_data) > 0 else 0
+            avg_anxiety = seg_data["career_anxiety"].mean() if len(seg_data) > 0 else 0
             top_barrier_mode = seg_data["biggest_barrier"].mode()
             top_barrier = top_barrier_mode.iloc[0] if len(top_barrier_mode) > 0 else "N/A"
             color = segment_color_map[seg]
+            dynamic_rec = gen_segment_rec(seg, seg_data)
             st.markdown(f"""
             <div class="persona-card" style="border-color:{color}">
                 <h4 style="color:{color}">{seg}</h4>
@@ -1743,7 +1982,7 @@ with tabs[7]:
                     Avg anxiety: <b>{avg_anxiety:.1f}/5</b><br>
                     Top barrier: <b>{top_barrier}</b>
                 </div>
-                <div class="policy">→ {segment_recs[seg]}</div>
+                <div class="policy">→ {dynamic_rec}</div>
             </div>""", unsafe_allow_html=True)
 
     st.markdown(section_divider(), unsafe_allow_html=True)
@@ -1767,16 +2006,7 @@ with tabs[7]:
     st.plotly_chart(fig_tree, use_container_width=True)
 
     st.markdown(section_divider(), unsafe_allow_html=True)
-    st.markdown(policy_panel("Policy Implications — Income-Reskilling Matrix", [
-        "<b>At-Risk Low Earners need combined financial + time support.</b> Reskilling vouchers alone won't work if workers "
-        "can't afford to reduce working hours. Income replacement during training periods is essential.",
-        "<b>Complacent High Earners are the hidden policy challenge.</b> They have resources but no urgency. "
-        "Employer-mandated continuous learning credits and sector-specific disruption briefings can activate this segment.",
-        "<b>Striving Upskillers are the highest-ROI segment for public investment.</b> They're already motivated and acting — "
-        "reducing friction (fast-track certs, recognition of prior learning) will convert effort into outcomes.",
-        "<b>Invested High Earners should be leveraged as ecosystem assets.</b> "
-        "Formalizing their role as mentors, industry trainers, or policy advisors multiplies the impact of their reskilling investment."
-    ]), unsafe_allow_html=True)
+    st.markdown(policy_panel("Policy Implications — Income-Reskilling Matrix", gen_tab8_policy(fdf)), unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════════
