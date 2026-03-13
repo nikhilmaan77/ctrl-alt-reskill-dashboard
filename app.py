@@ -46,36 +46,38 @@ if "dark_mode" not in st.session_state:
 
 dark = st.session_state.dark_mode
 
-C_PRIMARY = "#00D4AA" if dark else "#00997A"
-C_RISK = "#FF6B6B" if dark else "#D94444"
-C_WARN = "#FFD93D" if dark else "#CC9E00"
-C_INFO = "#6C9BD2" if dark else "#3A6FA8"
-C_PURPLE = "#B07CFF" if dark else "#7E4FCC"
-C_ORANGE = "#FF9F43" if dark else "#CC7A22"
+C_PRIMARY = "#00D4AA" if dark else "#007A5E"
+C_RISK = "#FF6B6B" if dark else "#C03030"
+C_WARN = "#FFD93D" if dark else "#9E7400"
+C_INFO = "#6C9BD2" if dark else "#2A5A8C"
+C_PURPLE = "#B07CFF" if dark else "#5E35A8"
+C_ORANGE = "#FF9F43" if dark else "#A06018"
 C_BG_CARD = "#1A1A2E" if dark else "#F4F6FA"
 C_BG_DARK = "#0F0F1A" if dark else "#FFFFFF"
-C_TEXT = "#E8E8E8" if dark else "#1A1A2E"
-C_TEXT_MUTED = "#999" if dark else "#666"
-C_TEXT_BODY = "#CCC" if dark else "#444"
-C_TEXT_SUB = "#777" if dark else "#888"
-C_TEXT_DESC = "#AAA" if dark else "#555"
-C_TEXT_POLICY = "#BBB" if dark else "#444"
-C_BORDER = "rgba(255,255,255,0.08)" if dark else "rgba(0,0,0,0.10)"
-C_CARD_SHADOW = "rgba(0,0,0,0.3)" if dark else "rgba(0,0,0,0.08)"
+C_TEXT = "#E8E8E8" if dark else "#111111"
+C_TEXT_MUTED = "#999" if dark else "#555"
+C_TEXT_BODY = "#CCC" if dark else "#333"
+C_TEXT_SUB = "#777" if dark else "#666"
+C_TEXT_DESC = "#AAA" if dark else "#444"
+C_TEXT_POLICY = "#BBB" if dark else "#333"
+C_BORDER = "rgba(255,255,255,0.08)" if dark else "rgba(0,0,0,0.12)"
+C_CARD_SHADOW = "rgba(0,0,0,0.3)" if dark else "rgba(0,0,0,0.06)"
 C_CARD_BG1 = "#1A1A2E" if dark else "#F4F6FA"
 C_CARD_BG2 = "#16213E" if dark else "#EDF0F7"
-C_POLICY_BG1 = "#0D2137" if dark else "#EFF8F5"
-C_POLICY_BG2 = "#132743" if dark else "#E5F2EE"
-C_CALLOUT_BG = "rgba(255,255,255,0.04)" if dark else "rgba(0,0,0,0.03)"
+C_POLICY_BG1 = "#0D2137" if dark else "#EBF5F0"
+C_POLICY_BG2 = "#132743" if dark else "#E0EDE6"
+C_CALLOUT_BG = "rgba(255,255,255,0.04)" if dark else "rgba(0,0,0,0.04)"
 C_PERSONA_BG1 = "#1A1A2E" if dark else "#F4F6FA"
 C_PERSONA_BG2 = "#1E2A3A" if dark else "#EDF0F7"
-C_HEADLINE_BG1 = "#0A2E1F" if dark else "#E8F5EF"
-C_HEADLINE_BG2 = "#0D3B2A" if dark else "#D5EDE2"
-C_DIVIDER = "rgba(255,255,255,0.08)" if dark else "rgba(0,0,0,0.10)"
-C_GEO_LAND = "#1A1A2E" if dark else "#E8E8E8"
-C_GEO_OCEAN = "#0F0F1A" if dark else "#F5F5F5"
-C_SIM_BG1 = "#0D2137" if dark else "#EFF8F5"
-C_SIM_BG2 = "#132743" if dark else "#E5F2EE"
+C_HEADLINE_BG1 = "#0A2E1F" if dark else "#E0F2E9"
+C_HEADLINE_BG2 = "#0D3B2A" if dark else "#D0E8DB"
+C_DIVIDER = "rgba(255,255,255,0.08)" if dark else "rgba(0,0,0,0.12)"
+C_GEO_LAND = "#1A1A2E" if dark else "#D8D8D8"
+C_GEO_OCEAN = "#0F0F1A" if dark else "#EEF0F2"
+C_SIM_BG1 = "#0D2137" if dark else "#EBF5F0"
+C_SIM_BG2 = "#132743" if dark else "#E0EDE6"
+C_CHART_LINE = "#555" if dark else "#AAA"
+C_CHART_DASH = "#666" if dark else "#999"
 
 PERSONA_COLORS = [C_PRIMARY, C_RISK, C_WARN, C_INFO, C_PURPLE]
 
@@ -202,6 +204,19 @@ CHART_BG = "rgba(0,0,0,0)"
 CHART_MARGINS = dict(l=60, r=30, t=50, b=50)
 CHART_FONT_COLOR = C_TEXT
 CHART_GRID_COLOR = "#333" if dark else "#DDD"
+C_CHART_AXIS = "#888" if dark else "#555"
+
+# Register a custom plotly layout default so ALL charts inherit font color
+import plotly.io as pio
+pio.templates["custom_dark"] = pio.templates["plotly_dark"]
+pio.templates["custom_light"] = pio.templates["plotly_white"]
+_tpl_name = "custom_dark" if dark else "custom_light"
+pio.templates[_tpl_name].layout.font = dict(color=CHART_FONT_COLOR, family="DM Sans, sans-serif")
+pio.templates[_tpl_name].layout.paper_bgcolor = CHART_BG
+pio.templates[_tpl_name].layout.plot_bgcolor = CHART_BG
+pio.templates[_tpl_name].layout.xaxis = dict(gridcolor=CHART_GRID_COLOR, zerolinecolor=CHART_GRID_COLOR)
+pio.templates[_tpl_name].layout.yaxis = dict(gridcolor=CHART_GRID_COLOR, zerolinecolor=CHART_GRID_COLOR)
+PLOTLY_TEMPLATE = _tpl_name
 
 DERIVED_VARS = [
     "automation_vulnerability_idx", "reskilling_engagement_score",
@@ -620,20 +635,18 @@ with st.sidebar:
     st.caption("Dashboard models are trained on the full 10K dataset. Filters apply to descriptive visualizations only.")
     st.caption(f"**Dataset:** {len(df):,} respondents · 12 countries · 38 variables")
 
-_mask = pd.Series(True, index=df.index)
-if sel_countries:
-    _mask &= df["country"].isin(sel_countries)
-if sel_industries:
-    _mask &= df["industry"].isin(sel_industries)
-_mask &= df["age"].between(age_range[0], age_range[1])
-if sel_genders:
-    _mask &= (df["gender"].isin(sel_genders) | df["gender"].isna())
+_mask = (
+    df["country"].isin(sel_countries) &
+    df["industry"].isin(sel_industries) &
+    df["age"].between(age_range[0], age_range[1]) &
+    (df["gender"].isin(sel_genders) | df["gender"].isna())
+)
 fdf = df[_mask]
 
 if len(fdf) == 0:
     st.markdown("# 🌍 Ctrl+Alt+Reskill")
     st.markdown("##### Global Workforce Reskilling Gap — Intelligence Dashboard for Policy & Industry Leaders")
-    st.warning("No data matches the current filter selection. Please select at least one country, industry, and gender in the sidebar.")
+    st.warning("No data matches the current filter selection. Please select at least one option in each filter.")
     st.stop()
 
 # ── Title ──
@@ -834,7 +847,7 @@ with tabs[1]:
         fig_roc = go.Figure()
         fig_roc.add_trace(go.Scatter(x=fpr, y=tpr, mode="lines", line=dict(color=C_PRIMARY, width=2),
                                       name=f"AUC = {roc_auc:.3f}"))
-        fig_roc.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode="lines", line=dict(dash="dash", color="#555"),
+        fig_roc.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode="lines", line=dict(dash="dash", color=C_CHART_LINE),
                                       showlegend=False))
         fig_roc.update_layout(title="ROC Curve", template=PLOTLY_TEMPLATE, paper_bgcolor=CHART_BG,
                                xaxis_title="FPR", yaxis_title="TPR", height=320, margin=CHART_MARGINS)
@@ -1269,10 +1282,10 @@ with tabs[4]:
             error_x=dict(type="data",
                          array=(coef_df["ci_high"] - coef_df["coef"]).values,
                          arrayminus=(coef_df["coef"] - coef_df["ci_low"]).values,
-                         color="#888", thickness=1),
+                         color=C_CHART_LINE, thickness=1),
             mode="markers", marker=dict(size=0), showlegend=False
         ))
-        fig.add_vline(x=0, line_dash="dash", line_color="#555")
+        fig.add_vline(x=0, line_dash="dash", line_color=C_CHART_LINE)
         fig.update_layout(title=title, template=PLOTLY_TEMPLATE, paper_bgcolor=CHART_BG,
                            height=400, margin=dict(l=180, r=30, t=50, b=50),
                            showlegend=False, xaxis_title="Coefficient")
@@ -1503,8 +1516,8 @@ with tabs[5]:
         fig_bubble.update_layout(paper_bgcolor=CHART_BG, height=350, margin=CHART_MARGINS,
                                   title="Danger Zone Analysis")
         # Add quadrant lines
-        fig_bubble.add_hline(y=bubble["engagement"].median(), line_dash="dot", line_color="#555")
-        fig_bubble.add_vline(x=bubble["vulnerability"].median(), line_dash="dot", line_color="#555")
+        fig_bubble.add_hline(y=bubble["engagement"].median(), line_dash="dot", line_color=C_CHART_LINE)
+        fig_bubble.add_vline(x=bubble["vulnerability"].median(), line_dash="dot", line_color=C_CHART_LINE)
         st.plotly_chart(fig_bubble, use_container_width=True)
 
     st.markdown(section_divider(), unsafe_allow_html=True)
@@ -1701,9 +1714,9 @@ with tabs[7]:
         labels={"income_jitter": "Income Tier →", "hours_jitter": "Upskilling Hours/Week →",
                 "income_reskilling_gap": "Segment"}
     )
-    fig_matrix.add_hline(y=5, line_dash="dash", line_color="#666",
+    fig_matrix.add_hline(y=5, line_dash="dash", line_color=C_CHART_DASH,
                           annotation_text="5 hrs/week threshold", annotation_position="top left")
-    fig_matrix.add_vline(x=0.5, line_dash="dash", line_color="#666")
+    fig_matrix.add_vline(x=0.5, line_dash="dash", line_color=C_CHART_DASH)
     # Quadrant labels
     for label, x, y in [("AT-RISK\nLOW EARNER", 0.0, 1.0), ("STRIVING\nUPSKILLER", 0.0, 15.0),
                          ("COMPLACENT\nHIGH EARNER", 1.0, 1.0), ("INVESTED\nHIGH EARNER", 1.0, 15.0)]:
@@ -1783,8 +1796,8 @@ with tabs[7]:
 # ════════════════════════════════════════════════════════════════
 
 st.markdown("---")
-st.markdown("""
-<div style="text-align:center; padding:1rem; color:#666; font-size:0.8rem;">
+st.markdown(f"""
+<div style="text-align:center; padding:1rem; color:{C_TEXT_MUTED}; font-size:0.8rem;">
     <b>Global Workforce Reskilling Gap Intelligence Dashboard</b>
 </div>
 """, unsafe_allow_html=True)
