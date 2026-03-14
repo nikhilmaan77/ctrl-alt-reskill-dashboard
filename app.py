@@ -1792,11 +1792,46 @@ with tabs[4]:
               [label_map[r["top_skill_pursued"]] for _, r in flow2.iterrows()]
     values = flow1["count"].tolist() + flow2["count"].tolist()
 
+    # Assign distinct colors per category type
+    industry_set = set(flow1["industry"])
+    barrier_set = set(flow1["biggest_barrier"]) | set(flow2["biggest_barrier"])
+    skill_set = set(flow2["top_skill_pursued"])
+
+    # Color palettes — distinct hues for each column
+    industry_palette = ["#00D4AA", "#00B894", "#1ABC9C", "#0ABDE3", "#48DBFB", "#2ED573",
+                        "#7BED9F", "#26DE81", "#20BF6B", "#0FB9B1", "#2BCBBA", "#45E6B5"]
+    barrier_palette = ["#FF6B6B", "#FF9F43", "#FFD93D", "#FECA57", "#FF6348", "#FC5C65"]
+    skill_palette = ["#B07CFF", "#6C9BD2", "#A29BFE", "#74B9FF", "#81ECEC", "#DFE6E9",
+                     "#FDA7DF", "#55E6C1", "#F8B739", "#FC427B"]
+
+    node_colors = []
+    ind_i, bar_i, skill_i = 0, 0, 0
+    for label in all_labels:
+        if label in industry_set:
+            node_colors.append(industry_palette[ind_i % len(industry_palette)])
+            ind_i += 1
+        elif label in barrier_set:
+            node_colors.append(barrier_palette[bar_i % len(barrier_palette)])
+            bar_i += 1
+        elif label in skill_set:
+            node_colors.append(skill_palette[skill_i % len(skill_palette)])
+            skill_i += 1
+        else:
+            node_colors.append("#888888")
+
+    # Link colors — semi-transparent tint of source node
+    def hex_to_rgba(hex_color, alpha=0.25):
+        h = hex_color.lstrip("#")
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        return f"rgba({r},{g},{b},{alpha})"
+
+    link_colors = [hex_to_rgba(node_colors[s], 0.3) for s in sources]
+
     fig_sankey = go.Figure(go.Sankey(
         node=dict(pad=15, thickness=20, label=all_labels,
-                  color=[C_INFO] * len(all_labels)),
+                  color=node_colors, line=dict(width=0.5, color="rgba(255,255,255,0.15)")),
         link=dict(source=sources, target=targets, value=values,
-                  color="rgba(108,155,210,0.3)")
+                  color=link_colors)
     ))
     fig_sankey.update_layout(template=PLOTLY_TEMPLATE, paper_bgcolor=CHART_BG, height=500,
                               margin=dict(l=20, r=20, t=20, b=20))
