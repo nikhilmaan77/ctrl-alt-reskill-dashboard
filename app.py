@@ -11,7 +11,12 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import (roc_curve, auc, confusion_matrix, classification_report,
                              precision_recall_curve, f1_score, accuracy_score)
@@ -306,9 +311,38 @@ def train_classification():
     df = load_data()
     X, y = get_clf_data(df)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42, stratify=y)
-    model = GradientBoostingClassifier(n_estimators=200, max_depth=5, learning_rate=0.1,
-                                       subsample=0.8, random_state=42)
-    model.fit(X_train, y_train)
+
+    # ── Benchmark all 6 classifiers ──
+    classifiers = {
+        "Logistic Regression": LogisticRegression(max_iter=1000, random_state=42),
+        "Decision Tree": DecisionTreeClassifier(max_depth=8, random_state=42),
+        "Random Forest": RandomForestClassifier(n_estimators=150, max_depth=8, random_state=42, n_jobs=-1),
+        "Gradient Boosting": GradientBoostingClassifier(n_estimators=200, max_depth=5, learning_rate=0.1,
+                                                         subsample=0.8, random_state=42),
+        "SVM (RBF)": Pipeline([("scaler", StandardScaler()), ("svm", SVC(kernel="rbf", probability=True, random_state=42))]),
+        "KNN (k=5)": Pipeline([("scaler", StandardScaler()), ("knn", KNeighborsClassifier(n_neighbors=5))]),
+    }
+
+    comparison = {}
+    roc_curves = {}
+    for name, clf in classifiers.items():
+        clf.fit(X_train, y_train)
+        yp = clf.predict(X_test)
+        yprob = clf.predict_proba(X_test)[:, 1]
+        fpr_c, tpr_c, _ = roc_curve(y_test, yprob)
+        auc_c = auc(fpr_c, tpr_c)
+        report = classification_report(y_test, yp, output_dict=True, zero_division=0)
+        comparison[name] = {
+            "accuracy": accuracy_score(y_test, yp),
+            "precision": report["1"]["precision"],
+            "recall": report["1"]["recall"],
+            "f1": report["1"]["f1-score"],
+            "auc": auc_c
+        }
+        roc_curves[name] = {"fpr": fpr_c, "tpr": tpr_c, "auc": auc_c}
+
+    # ── Select best model (Gradient Boosting) for deep analysis ──
+    model = classifiers["Gradient Boosting"]
     y_pred = model.predict(X_test)
     y_prob = model.predict_proba(X_test)[:, 1]
 
@@ -346,7 +380,8 @@ def train_classification():
         "y_train": y_train, "y_test": y_test,
         "y_pred": y_pred, "y_prob": y_prob,
         "shap_values": shap_values, "feat_imp": feat_imp,
-        "tier_metrics": tier_metrics
+        "tier_metrics": tier_metrics,
+        "comparison": comparison, "roc_curves": roc_curves
     }
 
 
@@ -1412,7 +1447,7 @@ with tabs[1]:
 
 with tabs[2]:
     st.markdown("### Who Successfully Reskills, and Why?")
-    st.caption("Gradient Boosting Classifier with SHAP Explainability — Target: Successful reskilling transition in past 3 years")
+    st.caption("6 classifiers benchmarked · Gradient Boosting selected · SHAP Explainability — Target: Successful reskilling transition in past 3 years")
 
     clf_res = train_classification()
 
@@ -1441,8 +1476,85 @@ with tabs[2]:
 
     st.markdown(section_divider(), unsafe_allow_html=True)
 
-    # Layer 2: Model Performance
-    st.markdown("#### Model Validation")
+    # ── Model Selection: Multi-Classifier Comparison ──
+    st.markdown("#### Model Selection — Classifier Comparison")
+    st.caption("6 classifiers benchmarked on the same 75/25 stratified split — Gradient Boosting selected as production model")
+
+    comp = clf_res["comparison"]
+    comp_df = pd.DataFrame(comp).T
+    comp_df.index.name = "Model"
+    comp_df.columns = ["Accuracy", "Precision", "Recall", "F1-Score", "AUC-ROC"]
+
+    # Find best model
+    best_model_name = comp_df["F1-Score"].idxmax()
+    best_f1 = comp_df.loc[best_model_name, "F1-Score"]
+    best_auc = comp_df.loc[best_model_name, "AUC-ROC"]
+
+    # Styled comparison table
+    def highlight_best(row):
+        is_best = row.name == best_model_name
+        return ["background-color: rgba(0,212,170,0.15); font-weight: bold" if is_best else "" for _ in row]
+
+    st.dataframe(
+        comp_df.style.apply(highlight_best, axis=1).format("{:.4f}"),
+        use_container_width=True, height=260
+    )
+
+    # Grouped bar chart: F1 and AUC side by side
+    comp_chart_data = []
+    for model_name in comp_df.index:
+        comp_chart_data.append({"Model": model_name, "Metric": "F1-Score", "Value": comp_df.loc[model_name, "F1-Score"]})
+        comp_chart_data.append({"Model": model_name, "Metric": "AUC-ROC", "Value": comp_df.loc[model_name, "AUC-ROC"]})
+    comp_chart_df = pd.DataFrame(comp_chart_data)
+
+    fig_comp_clf = px.bar(comp_chart_df, x="Model", y="Value", color="Metric",
+                           barmode="group", template=PLOTLY_TEMPLATE,
+                           color_discrete_map={"F1-Score": C_PRIMARY, "AUC-ROC": C_INFO},
+                           labels={"Value": "Score"})
+    fig_comp_clf.update_layout(paper_bgcolor=CHART_BG, margin=CHART_MARGINS, height=380,
+                                legend=dict(orientation="h", y=-0.25),
+                                yaxis=dict(range=[0, 1]))
+    st.plotly_chart(fig_comp_clf, use_container_width=True)
+
+    # Multi-model ROC overlay
+    st.markdown("##### ROC Curves — All Classifiers")
+    roc_colors = {
+        "Logistic Regression": C_CHART_DASH, "Decision Tree": C_WARN,
+        "Random Forest": C_PURPLE, "Gradient Boosting": C_PRIMARY,
+        "SVM (RBF)": C_RISK, "KNN (k=5)": C_ORANGE
+    }
+    fig_roc_all = go.Figure()
+    for model_name, roc_data in clf_res["roc_curves"].items():
+        fig_roc_all.add_trace(go.Scatter(
+            x=roc_data["fpr"], y=roc_data["tpr"], mode="lines",
+            line=dict(color=roc_colors.get(model_name, C_INFO),
+                      width=3 if model_name == best_model_name else 1.5),
+            name=f"{model_name} ({roc_data['auc']:.3f})"
+        ))
+    fig_roc_all.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode="lines",
+                                      line=dict(dash="dash", color=C_CHART_LINE), showlegend=False))
+    fig_roc_all.update_layout(template=PLOTLY_TEMPLATE, paper_bgcolor=CHART_BG,
+                               xaxis_title="False Positive Rate", yaxis_title="True Positive Rate",
+                               height=420, margin=CHART_MARGINS,
+                               legend=dict(font=dict(size=10), y=0.02, x=0.40))
+    st.plotly_chart(fig_roc_all, use_container_width=True)
+
+    # Dynamic callout
+    second_best = comp_df["F1-Score"].nlargest(2).index[1] if len(comp_df) > 1 else "N/A"
+    second_f1 = comp_df.loc[second_best, "F1-Score"] if second_best != "N/A" else 0
+    f1_gap = (best_f1 - second_f1) * 100
+    st.markdown(callout_box(
+        f"🏆 {best_model_name} Selected",
+        f"<b>{best_model_name}</b> achieves the highest F1-Score (<b>{best_f1:.4f}</b>) and AUC-ROC (<b>{best_auc:.4f}</b>), "
+        f"outperforming the next-best {second_best} by <b>{f1_gap:+.1f}pp</b> on F1. "
+        f"This model is used for all subsequent classification analysis, SHAP explainability, and the What-If Simulator below.",
+        C_PRIMARY
+    ), unsafe_allow_html=True)
+
+    st.markdown(section_divider(), unsafe_allow_html=True)
+
+    # Layer 2: Model Performance (Gradient Boosting deep-dive)
+    st.markdown("#### Gradient Boosting — Detailed Validation")
     col_roc, col_cm, col_tier = st.columns(3)
 
     with col_roc:

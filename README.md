@@ -8,7 +8,7 @@ A WEF/ILO-grade analytical dashboard built on 10,000 synthetic survey responses,
 |-----|-------|--------|----------------|
 | 1 | Executive Summary | KPI Overview | Headline stats, global choropleth, persona & matrix thumbnails |
 | 2 | Data Profile & Exploration | EDA / Descriptive | Data quality, univariate distributions, correlation heatmap |
-| 3 | Who Successfully Reskills? | Classification (Gradient Boosting + SHAP) | Feature importance, What-If Simulator, policy levers |
+| 3 | Who Successfully Reskills? | Classification (6 models benchmarked, GB selected) | Model comparison table, ROC overlay, SHAP, What-If Simulator |
 | 4 | Five Global Workforce Personas | Clustering (K-Means, k=5) | Radar profiles, country × persona heatmap, persona cards |
 | 5 | Behavioural Patterns | Association Rule Mining (Apriori) | Network graph, Sankey flow, policy bundles |
 | 6 | Drivers of Willingness & Anxiety | Regression (Random Forest + SHAP) | Feature importance, inverted-U visualization, multi-country comparison |
