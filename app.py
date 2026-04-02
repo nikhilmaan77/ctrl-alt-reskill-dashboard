@@ -306,8 +306,10 @@ def get_clf_data(df):
 # MODEL TRAINING (CACHED)
 # ════════════════════════════════════════════════════════════════
 
+_CACHE_VERSION = "v3_multiclf"  # bump this to force cache invalidation
+
 @st.cache_resource
-def train_classification():
+def train_classification(_version=_CACHE_VERSION):
     df = load_data()
     X, y = get_clf_data(df)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42, stratify=y)
@@ -392,7 +394,7 @@ def train_classification():
 
 
 @st.cache_resource
-def train_clustering():
+def train_clustering(_version=_CACHE_VERSION):
     df = load_data()
     cluster_features = [
         "automation_vulnerability_idx", "reskilling_engagement_score",
@@ -467,7 +469,7 @@ def train_clustering():
 
 
 @st.cache_resource
-def run_association_rules():
+def run_association_rules(_version=_CACHE_VERSION):
     df = load_data()
     # Select and binarize categorical variables
     rules_df = pd.DataFrame()
@@ -529,7 +531,7 @@ def run_association_rules():
 
 
 @st.cache_resource
-def train_regression():
+def train_regression(_version=_CACHE_VERSION):
     df = load_data()
     feature_cols = [
         "age", "gender_female", "education_ordinal", "role_ordinal",
@@ -1579,23 +1581,27 @@ with tabs[2]:
 
     with col_pr:
         st.markdown("##### Precision-Recall Curve")
-        fig_pr = go.Figure()
-        pr_colors = {
-            "Logistic Regression": C_CHART_DASH, "Decision Tree": C_WARN,
-            "Random Forest": C_PURPLE, "Gradient Boosting": C_PRIMARY,
-            "SVM (RBF)": C_RISK, "KNN (k=5)": C_ORANGE
-        }
-        for model_name, pr_data in clf_res["all_pr"].items():
-            fig_pr.add_trace(go.Scatter(
-                x=pr_data["recall"], y=pr_data["precision"], mode="lines",
-                line=dict(color=pr_colors.get(model_name, C_INFO),
-                          width=3 if model_name == "Gradient Boosting" else 1.5),
-                name=model_name
-            ))
-        fig_pr.update_layout(template=PLOTLY_TEMPLATE, paper_bgcolor=CHART_BG,
-                              xaxis_title="Recall", yaxis_title="Precision", height=320,
-                              margin=CHART_MARGINS, legend=dict(font=dict(size=8), y=0.02, x=0.02))
-        st.plotly_chart(fig_pr, use_container_width=True)
+        all_pr_data = clf_res.get("all_pr", {})
+        if all_pr_data:
+            fig_pr = go.Figure()
+            pr_colors = {
+                "Logistic Regression": C_CHART_DASH, "Decision Tree": C_WARN,
+                "Random Forest": C_PURPLE, "Gradient Boosting": C_PRIMARY,
+                "SVM (RBF)": C_RISK, "KNN (k=5)": C_ORANGE
+            }
+            for model_name, pr_data in all_pr_data.items():
+                fig_pr.add_trace(go.Scatter(
+                    x=pr_data["recall"], y=pr_data["precision"], mode="lines",
+                    line=dict(color=pr_colors.get(model_name, C_INFO),
+                              width=3 if model_name == "Gradient Boosting" else 1.5),
+                    name=model_name
+                ))
+            fig_pr.update_layout(template=PLOTLY_TEMPLATE, paper_bgcolor=CHART_BG,
+                                  xaxis_title="Recall", yaxis_title="Precision", height=320,
+                                  margin=CHART_MARGINS, legend=dict(font=dict(size=8), y=0.02, x=0.02))
+            st.plotly_chart(fig_pr, use_container_width=True)
+        else:
+            st.info("Precision-Recall data not available. Clear cache and reload.")
 
     with col_cm:
         cm = confusion_matrix(clf_res["y_test"], clf_res["y_pred"])
@@ -1621,24 +1627,26 @@ with tabs[2]:
         st.plotly_chart(fig_tier, use_container_width=True)
 
     # Confusion matrices grid — Best vs Worst performer
-    st.markdown("##### Confusion Matrices — Best vs Worst Classifier")
-    comp_df_local = pd.DataFrame(clf_res["comparison"]).T
-    best_name = comp_df_local["f1"].idxmax()
-    worst_name = comp_df_local["f1"].idxmin()
-    cm_cols = st.columns(2)
-    for idx, (cm_name, cm_color, cm_label) in enumerate([
-        (best_name, C_PRIMARY, f"Best: {best_name}"),
-        (worst_name, C_RISK, f"Weakest: {worst_name}")
-    ]):
-        with cm_cols[idx]:
-            cm_data = clf_res["all_cm"][cm_name]
-            fig_cm_compare = px.imshow(cm_data, text_auto=True,
-                                        color_continuous_scale=[[0, C_BG_DARK], [1, cm_color]],
-                                        x=["No", "Yes"], y=["No", "Yes"],
-                                        labels={"x": "Predicted", "y": "Actual"}, template=PLOTLY_TEMPLATE)
-            fig_cm_compare.update_layout(title=cm_label, paper_bgcolor=CHART_BG, height=280,
-                                          margin=dict(l=60, r=30, t=40, b=40), coloraxis_showscale=False)
-            st.plotly_chart(fig_cm_compare, use_container_width=True)
+    all_cm_data = clf_res.get("all_cm", {})
+    if all_cm_data:
+        st.markdown("##### Confusion Matrices — Best vs Worst Classifier")
+        comp_df_local = pd.DataFrame(clf_res["comparison"]).T
+        best_name = comp_df_local["f1"].idxmax()
+        worst_name = comp_df_local["f1"].idxmin()
+        cm_cols = st.columns(2)
+        for idx, (cm_name, cm_color, cm_label) in enumerate([
+            (best_name, C_PRIMARY, f"Best: {best_name}"),
+            (worst_name, C_RISK, f"Weakest: {worst_name}")
+        ]):
+            with cm_cols[idx]:
+                cm_data = all_cm_data[cm_name]
+                fig_cm_compare = px.imshow(cm_data, text_auto=True,
+                                            color_continuous_scale=[[0, C_BG_DARK], [1, cm_color]],
+                                            x=["No", "Yes"], y=["No", "Yes"],
+                                            labels={"x": "Predicted", "y": "Actual"}, template=PLOTLY_TEMPLATE)
+                fig_cm_compare.update_layout(title=cm_label, paper_bgcolor=CHART_BG, height=280,
+                                              margin=dict(l=60, r=30, t=40, b=40), coloraxis_showscale=False)
+                st.plotly_chart(fig_cm_compare, use_container_width=True)
 
     st.markdown(section_divider(), unsafe_allow_html=True)
 
