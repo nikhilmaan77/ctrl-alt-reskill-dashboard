@@ -325,12 +325,15 @@ def train_classification():
 
     comparison = {}
     roc_curves = {}
+    all_confusion_matrices = {}
+    all_pr_curves = {}
     for name, clf in classifiers.items():
         clf.fit(X_train, y_train)
         yp = clf.predict(X_test)
         yprob = clf.predict_proba(X_test)[:, 1]
         fpr_c, tpr_c, _ = roc_curve(y_test, yprob)
         auc_c = auc(fpr_c, tpr_c)
+        prec_c, rec_c, _ = precision_recall_curve(y_test, yprob)
         report = classification_report(y_test, yp, output_dict=True, zero_division=0)
         comparison[name] = {
             "accuracy": accuracy_score(y_test, yp),
@@ -340,6 +343,8 @@ def train_classification():
             "auc": auc_c
         }
         roc_curves[name] = {"fpr": fpr_c, "tpr": tpr_c, "auc": auc_c}
+        all_confusion_matrices[name] = confusion_matrix(y_test, yp)
+        all_pr_curves[name] = {"precision": prec_c, "recall": rec_c}
 
     # ── Select best model (Gradient Boosting) for deep analysis ──
     model = classifiers["Gradient Boosting"]
@@ -381,7 +386,8 @@ def train_classification():
         "y_pred": y_pred, "y_prob": y_prob,
         "shap_values": shap_values, "feat_imp": feat_imp,
         "tier_metrics": tier_metrics,
-        "comparison": comparison, "roc_curves": roc_curves
+        "comparison": comparison, "roc_curves": roc_curves,
+        "all_cm": all_confusion_matrices, "all_pr": all_pr_curves
     }
 
 
@@ -398,6 +404,19 @@ def train_clustering():
     X_cluster = cdf.values
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X_cluster)
+
+    # ── Elbow & Silhouette analysis for k=2..8 ──
+    from sklearn.metrics import silhouette_score
+    k_range = range(2, 9)
+    inertias = []
+    silhouettes = []
+    for k in k_range:
+        km_test = KMeans(n_clusters=k, random_state=42, n_init=10)
+        km_test.fit(X_scaled)
+        inertias.append(km_test.inertia_)
+        silhouettes.append(silhouette_score(X_scaled, km_test.labels_, sample_size=min(3000, len(X_scaled))))
+
+    # Final model with k=5
     km = KMeans(n_clusters=5, random_state=42, n_init=20)
     labels = km.fit_predict(X_scaled)
     centroids_scaled = km.cluster_centers_
@@ -442,7 +461,8 @@ def train_clustering():
 
     return {
         "labels": label_series, "centroids": centroid_df,
-        "persona_map": persona_map, "scaler": scaler, "model": km
+        "persona_map": persona_map, "scaler": scaler, "model": km,
+        "k_range": list(k_range), "inertias": inertias, "silhouettes": silhouettes
     }
 
 
@@ -1555,26 +1575,34 @@ with tabs[2]:
 
     # Layer 2: Model Performance (Gradient Boosting deep-dive)
     st.markdown("#### Gradient Boosting — Detailed Validation")
-    col_roc, col_cm, col_tier = st.columns(3)
+    col_pr, col_cm, col_tier = st.columns(3)
 
-    with col_roc:
-        fpr, tpr, _ = roc_curve(clf_res["y_test"], clf_res["y_prob"])
-        roc_auc = auc(fpr, tpr)
-        fig_roc = go.Figure()
-        fig_roc.add_trace(go.Scatter(x=fpr, y=tpr, mode="lines", line=dict(color=C_PRIMARY, width=2),
-                                      name=f"AUC = {roc_auc:.3f}"))
-        fig_roc.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode="lines", line=dict(dash="dash", color=C_CHART_LINE),
-                                      showlegend=False))
-        fig_roc.update_layout(title="ROC Curve", template=PLOTLY_TEMPLATE, paper_bgcolor=CHART_BG,
-                               xaxis_title="FPR", yaxis_title="TPR", height=320, margin=CHART_MARGINS)
-        st.plotly_chart(fig_roc, use_container_width=True)
+    with col_pr:
+        st.markdown("##### Precision-Recall Curve")
+        fig_pr = go.Figure()
+        pr_colors = {
+            "Logistic Regression": C_CHART_DASH, "Decision Tree": C_WARN,
+            "Random Forest": C_PURPLE, "Gradient Boosting": C_PRIMARY,
+            "SVM (RBF)": C_RISK, "KNN (k=5)": C_ORANGE
+        }
+        for model_name, pr_data in clf_res["all_pr"].items():
+            fig_pr.add_trace(go.Scatter(
+                x=pr_data["recall"], y=pr_data["precision"], mode="lines",
+                line=dict(color=pr_colors.get(model_name, C_INFO),
+                          width=3 if model_name == "Gradient Boosting" else 1.5),
+                name=model_name
+            ))
+        fig_pr.update_layout(template=PLOTLY_TEMPLATE, paper_bgcolor=CHART_BG,
+                              xaxis_title="Recall", yaxis_title="Precision", height=320,
+                              margin=CHART_MARGINS, legend=dict(font=dict(size=8), y=0.02, x=0.02))
+        st.plotly_chart(fig_pr, use_container_width=True)
 
     with col_cm:
         cm = confusion_matrix(clf_res["y_test"], clf_res["y_pred"])
         fig_cm = px.imshow(cm, text_auto=True, color_continuous_scale=[[0, C_BG_DARK], [1, C_PRIMARY]],
                            x=["No", "Yes"], y=["No", "Yes"],
                            labels={"x": "Predicted", "y": "Actual"}, template=PLOTLY_TEMPLATE)
-        fig_cm.update_layout(title="Confusion Matrix", paper_bgcolor=CHART_BG, height=320,
+        fig_cm.update_layout(title="Confusion Matrix (GB)", paper_bgcolor=CHART_BG, height=320,
                               margin=CHART_MARGINS, coloraxis_showscale=False)
         st.plotly_chart(fig_cm, use_container_width=True)
 
@@ -1591,6 +1619,26 @@ with tabs[2]:
                                 height=320, margin=CHART_MARGINS, yaxis_tickformat=".0%",
                                 legend=dict(orientation="h", y=-0.2))
         st.plotly_chart(fig_tier, use_container_width=True)
+
+    # Confusion matrices grid — Best vs Worst performer
+    st.markdown("##### Confusion Matrices — Best vs Worst Classifier")
+    comp_df_local = pd.DataFrame(clf_res["comparison"]).T
+    best_name = comp_df_local["f1"].idxmax()
+    worst_name = comp_df_local["f1"].idxmin()
+    cm_cols = st.columns(2)
+    for idx, (cm_name, cm_color, cm_label) in enumerate([
+        (best_name, C_PRIMARY, f"Best: {best_name}"),
+        (worst_name, C_RISK, f"Weakest: {worst_name}")
+    ]):
+        with cm_cols[idx]:
+            cm_data = clf_res["all_cm"][cm_name]
+            fig_cm_compare = px.imshow(cm_data, text_auto=True,
+                                        color_continuous_scale=[[0, C_BG_DARK], [1, cm_color]],
+                                        x=["No", "Yes"], y=["No", "Yes"],
+                                        labels={"x": "Predicted", "y": "Actual"}, template=PLOTLY_TEMPLATE)
+            fig_cm_compare.update_layout(title=cm_label, paper_bgcolor=CHART_BG, height=280,
+                                          margin=dict(l=60, r=30, t=40, b=40), coloraxis_showscale=False)
+            st.plotly_chart(fig_cm_compare, use_container_width=True)
 
     st.markdown(section_divider(), unsafe_allow_html=True)
 
@@ -1668,6 +1716,52 @@ with tabs[3]:
     df_with_persona["persona"] = df_with_persona["cluster"].map(clust_res["persona_map"])
     df_with_persona = df_with_persona.dropna(subset=["persona"])
     fdf_persona = df_with_persona[df_with_persona.index.isin(fdf.index)]
+
+    # ── Cluster Selection Justification ──
+    st.markdown("#### Optimal Cluster Selection (k=2 to k=8)")
+    elbow_col, sil_col = st.columns(2)
+
+    with elbow_col:
+        st.markdown("##### Elbow Method — Inertia")
+        fig_elbow = go.Figure()
+        fig_elbow.add_trace(go.Scatter(
+            x=clust_res["k_range"], y=clust_res["inertias"],
+            mode="lines+markers", line=dict(color=C_INFO, width=2),
+            marker=dict(size=8, color=[C_PRIMARY if k == 5 else C_INFO for k in clust_res["k_range"]]),
+            hovertemplate="k=%{x}<br>Inertia=%{y:,.0f}"
+        ))
+        fig_elbow.add_vline(x=5, line_dash="dash", line_color=C_PRIMARY, annotation_text="k=5",
+                             annotation_position="top")
+        fig_elbow.update_layout(template=PLOTLY_TEMPLATE, paper_bgcolor=CHART_BG,
+                                 xaxis_title="Number of Clusters (k)", yaxis_title="Inertia (WCSS)",
+                                 height=320, margin=CHART_MARGINS, xaxis=dict(dtick=1))
+        st.plotly_chart(fig_elbow, use_container_width=True)
+
+    with sil_col:
+        st.markdown("##### Silhouette Score")
+        best_k_sil = clust_res["k_range"][np.argmax(clust_res["silhouettes"])]
+        fig_sil = go.Figure()
+        fig_sil.add_trace(go.Bar(
+            x=clust_res["k_range"], y=clust_res["silhouettes"],
+            marker_color=[C_PRIMARY if k == 5 else C_INFO for k in clust_res["k_range"]],
+            hovertemplate="k=%{x}<br>Silhouette=%{y:.4f}"
+        ))
+        fig_sil.update_layout(template=PLOTLY_TEMPLATE, paper_bgcolor=CHART_BG,
+                               xaxis_title="Number of Clusters (k)", yaxis_title="Silhouette Score",
+                               height=320, margin=CHART_MARGINS, xaxis=dict(dtick=1))
+        st.plotly_chart(fig_sil, use_container_width=True)
+
+    k5_sil = clust_res["silhouettes"][clust_res["k_range"].index(5)]
+    peak_sil = max(clust_res["silhouettes"])
+    peak_note = " (peak score)" if best_k_sil == 5 else f", while peak is at k={best_k_sil} ({peak_sil:.4f})"
+    st.markdown(callout_box(
+        "📐 k=5 Selection Rationale",
+        f"The elbow curve shows diminishing returns beyond k=5. Silhouette score at k=5 is <b>{k5_sil:.4f}</b>{peak_note}. "
+        f"k=5 was selected balancing statistical fit with interpretability — five personas map to distinct, actionable policy segments.",
+        C_INFO
+    ), unsafe_allow_html=True)
+
+    st.markdown(section_divider(), unsafe_allow_html=True)
 
     # Layer 1: Radar chart
     st.markdown("#### Persona Profiles — Radar Comparison")
